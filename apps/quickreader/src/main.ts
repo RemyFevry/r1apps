@@ -1,6 +1,6 @@
 import './style.css'
 import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, type BookRecord, type Settings, type Storage } from 'r1-kit'
-import { ensureBundledBooks } from './ingestion/bundled'
+import { ShelfStorage } from './ingestion/shelf'
 import { decodeTransitRef, transitRawUrl } from './ingestion/transit'
 import { deepLinkScreen } from './screens/deeplink'
 import { libraryScreen } from './screens/library'
@@ -23,7 +23,7 @@ export interface Ctx {
 }
 
 const app = document.getElementById('app') as HTMLElement
-const storage = createStorage()
+const storage: Storage = new ShelfStorage(__BUNDLED_BOOKS__, __BUNDLED_BOOKS_SHA__, createStorage())
 const settings: Settings = { ...DEFAULT_SETTINGS }
 
 let cleanup: (() => void) | null = null
@@ -62,7 +62,6 @@ async function boot(): Promise<void> {
   applyPlatform()
   const saved = await storage.loadSettings()
   Object.assign(settings, saved ?? DEFAULT_SETTINGS)
-  await ensureBundledBooks(storage, __BUNDLED_BOOKS__, __BUNDLED_BOOKS_SHA__)
   const params = new URLSearchParams(location.search)
   const add = params.get('add') ?? (() => {
     const code = params.get('b')
