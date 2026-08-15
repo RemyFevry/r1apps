@@ -178,6 +178,13 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     nav.library()
   }
 
+  const flush = () => saveNow()
+  const onVis = () => {
+    if (document.visibilityState === 'hidden') flush()
+  }
+  window.addEventListener('pagehide', flush)
+  document.addEventListener('visibilitychange', onVis)
+
   const detach = attachInputs({
     onSideClick() {
       if (cardTimer) {
@@ -239,6 +246,8 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     if (timer) clearTimeout(timer)
     if (cardTimer) clearTimeout(cardTimer)
     if (hudTimer) clearTimeout(hudTimer)
+    window.removeEventListener('pagehide', flush)
+    document.removeEventListener('visibilitychange', onVis)
     saveNow()
     detach()
   }

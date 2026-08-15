@@ -90,6 +90,22 @@ describe('DeviceStorage', () => {
     await s.deleteBook('x')
     expect(ls.has('quickreader:pos:x')).toBe(false)
     expect(await s.listBooks()).toEqual([])
+    expect(store.has('pos:x')).toBe(false)
+  })
+
+  test('positions mirror to creationStorage and load falls back when localStorage is empty', async () => {
+    const s = new DeviceStorage(fakeArea())
+    await s.savePosition('x', { chapter: 2, wordIndex: 45, wpm: 350, frac: 0.3 })
+    expect(store.has('pos:x')).toBe(true)
+    ls.delete('quickreader:pos:x')
+    expect(await s.loadPosition('x')).toEqual({ chapter: 2, wordIndex: 45, wpm: 350, frac: 0.3 })
+  })
+
+  test('settings mirror and fall back the same way', async () => {
+    const s = new DeviceStorage(fakeArea())
+    await s.saveSettings(settings)
+    ls.delete('quickreader:settings')
+    expect(await s.loadSettings()).toEqual(settings)
   })
 })
 

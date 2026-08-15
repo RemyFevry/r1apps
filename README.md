@@ -39,6 +39,29 @@ New app: copy `apps/_template/`, rename, done — the workflow picks it up.
 Books for quickreader are never committed here; each book is added on-device by URL
 (see `docs/adr/0001-ingestion-qr-deeplink-with-typed-fallback.md`).
 
+### Managing your shelf (bundled books)
+
+The personal shelf build carries your books inside the app itself — the durable
+copy lives in the bundle, not device storage.
+
+- `pnpm bookshelf add <book.epub> [--title "…"] [--author "…"]` — appends a record
+  to `apps/quickreader/books/` (gitignored; this folder **is** your library
+  manifest — don't delete it unless you mean to drop books).
+- `pnpm bookshelf sync` — bundles **every** book in that folder into a fresh
+  build, deploys `remyf-agent/r1-shelf`, prints the QR page. Rescan to pick it
+  up; the library then shows old + new books together. Nothing is ever dropped
+  by adding books.
+- `pnpm bookshelf list` / `pnpm bookshelf remove <slug>` — review or permanently
+  remove; removal takes effect at the next `sync`.
+- Deleting a book on-device is a temporary hide — the next sync restores all
+  bundled books. Permanent removal is `remove` + `sync`.
+- One record per filename: adding a different book under an existing filename
+  overwrites that record. Keep filenames distinct.
+- Books added by URL (Add-book screen / deep-link QR) live in device storage,
+  which may not persist across closes on current R1 firmware — treat the shelf
+  as the reliable lane until the on-device checklist
+  ([#9](https://github.com/RemyFevry/r1apps/issues/9)) says otherwise.
+
 Inspired by [andr3w-hilton/rabbit-r1-creations-public](https://github.com/andr3w-hilton/rabbit-r1-creations-public).
 
 ## License

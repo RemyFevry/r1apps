@@ -79,6 +79,8 @@ const BOOK_PREFIX = 'book:'
 const INDEX_KEY = 'library:index'
 const POS_PREFIX = 'quickreader:pos:'
 const SETTINGS_KEY = 'quickreader:settings'
+const CS_POS_PREFIX = 'pos:'
+const CS_SETTINGS_KEY = 'settings'
 
 export class DeviceStorage implements Storage {
   constructor(private cs: CreationStorageArea) {}
@@ -109,24 +111,64 @@ export class DeviceStorage implements Storage {
     await this.cs.removeItem(BOOK_PREFIX + id)
     await this.writeIndex((await this.listBooks()).filter((m) => m.id !== id))
     localStorage.removeItem(POS_PREFIX + id)
+    void this.cs.removeItem(CS_POS_PREFIX + id).catch(() => {})
   }
 
   async savePosition(id: string, pos: Position): Promise<void> {
-    localStorage.setItem(POS_PREFIX + id, JSON.stringify(pos))
+    const raw = JSON.stringify(pos)
+    localStorage.setItem(POS_PREFIX + id, raw)
+    // Mirror to creationStorage: on firmware where localStorage does not
+    // survive a webview restart, this is the durable copy. Small records
+    // (the earlier failure mode was whole-book writes).
+    void this.cs
+      .setItem(CS_POS_PREFIX + id, toB64(raw))
+      .catch(() => {})
   }
 
   async loadPosition(id: string): Promise<Position | null> {
     const raw = localStorage.getItem(POS_PREFIX + id)
-    return raw ? (JSON.parse(raw) as Position) : null
+    if (raw) {
+      try {
+        return JSON.parse(raw) as Position
+      } catch {
+        // fall through to the mirror
+      }
+    }
+    const mirrored = await this.cs.getItem(CS_POS_PREFIX + id)
+    if (mirrored) {
+      try {
+        return JSON.parse(fromB64(mirrored)) as Position
+      } catch {
+        return null
+      }
+    }
+    return null
   }
 
   async saveSettings(s: Settings): Promise<void> {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
+    const raw = JSON.stringify(s)
+    localStorage.setItem(SETTINGS_KEY, raw)
+    void this.cs.setItem(CS_SETTINGS_KEY, toB64(raw)).catch(() => {})
   }
 
   async loadSettings(): Promise<Settings | null> {
     const raw = localStorage.getItem(SETTINGS_KEY)
-    return raw ? (JSON.parse(raw) as Settings) : null
+    if (raw) {
+      try {
+        return JSON.parse(raw) as Settings
+      } catch {
+        // fall through to the mirror
+      }
+    }
+    const mirrored = await this.cs.getItem(CS_SETTINGS_KEY)
+    if (mirrored) {
+      try {
+        return JSON.parse(fromB64(mirrored)) as Settings
+      } catch {
+        return null
+      }
+    }
+    return null
   }
 }
 
