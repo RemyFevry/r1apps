@@ -83,35 +83,66 @@ const CS_POS_PREFIX = 'pos:'
 const CS_SETTINGS_KEY = 'settings'
 
 export class DeviceStorage implements Storage {
-  constructor(private cs: CreationStorageArea) {}
+  /** Session-only fallback when creationStorage is (yet) unavailable. */
+  private memBooks = new Map<string, BookRecord>()
+  private memIndex: BookMeta[] = []
+
+  constructor(
+    private cs: CreationStorageArea | (() => CreationStorageArea | undefined),
+  ) {}
+
+  private area(): CreationStorageArea | undefined {
+    return typeof this.cs === 'function' ? this.cs() : this.cs
+  }
 
   private async writeIndex(metas: BookMeta[]): Promise<void> {
-    await this.cs.setItem(INDEX_KEY, toB64(JSON.stringify(metas)))
+    const cs = this.area()
+    if (!cs) {
+      this.memIndex = metas
+      return
+    }
+    await cs.setItem(INDEX_KEY, toB64(JSON.stringify(metas)))
   }
 
   async saveBook(book: BookRecord): Promise<void> {
-    await this.cs.setItem(BOOK_PREFIX + book.id, toB64(JSON.stringify(book)))
-    const metas = await this.listBooks()
-    const next = metas.filter((m) => m.id !== book.id)
+    const cs = this.area()
+    if (!cs) {
+      this.memBooks.set(book.id, book)
+      this.memIndex = this.memIndex.filter((m) => m.id !== book.id)
+      this.memIndex.unshift({ id: book.id, title: book.title, author: book.author, wordCount: book.wordCount, addedAt: book.addedAt, sourceUrl: book.sourceUrl })
+      return
+    }
+    await cs.setItem(BOOK_PREFIX + book.id, toB64(JSON.stringify(book)))
+    const next = (await this.listBooks()).filter((m) => m.id !== book.id)
     next.unshift({ id: book.id, title: book.title, author: book.author, wordCount: book.wordCount, addedAt: book.addedAt, sourceUrl: book.sourceUrl })
     await this.writeIndex(next)
   }
 
   async loadBook(id: string): Promise<BookRecord | null> {
-    const raw = await this.cs.getItem(BOOK_PREFIX + id)
+    const cs = this.area()
+    if (!cs) return this.memBooks.get(id) ?? null
+    const raw = await cs.getItem(BOOK_PREFIX + id)
     return raw ? (JSON.parse(fromB64(raw)) as BookRecord) : null
   }
 
   async listBooks(): Promise<BookMeta[]> {
-    const raw = await this.cs.getItem(INDEX_KEY)
+    const cs = this.area()
+    if (!cs) return [...this.memIndex]
+    const raw = await cs.getItem(INDEX_KEY)
     return raw ? (JSON.parse(fromB64(raw)) as BookMeta[]) : []
   }
 
   async deleteBook(id: string): Promise<void> {
-    await this.cs.removeItem(BOOK_PREFIX + id)
-    await this.writeIndex((await this.listBooks()).filter((m) => m.id !== id))
+    const cs = this.area()
+    if (cs) {
+      await cs.removeItem(BOOK_PREFIX + id)
+      await this.writeIndex((await this.listBooks()).filter((m) => m.id !== id))
+      void cs.removeItem(CS_POS_PREFIX + id).catch(() => {})
+    } else {
+      this.memBooks.delete(id)
+      this.memIndex = this.memIndex.filter((m) => m.id !== id)
+    }
     localStorage.removeItem(POS_PREFIX + id)
-    void this.cs.removeItem(CS_POS_PREFIX + id).catch(() => {})
   }
 
   async savePosition(id: string, pos: Position): Promise<void> {
@@ -120,9 +151,8 @@ export class DeviceStorage implements Storage {
     // Mirror to creationStorage: on firmware where localStorage does not
     // survive a webview restart, this is the durable copy. Small records
     // (the earlier failure mode was whole-book writes).
-    void this.cs
-      .setItem(CS_POS_PREFIX + id, toB64(raw))
-      .catch(() => {})
+    const cs = this.area()
+    if (cs) void cs.setItem(CS_POS_PREFIX + id, toB64(raw)).catch(() => {})
   }
 
   async loadPosition(id: string): Promise<Position | null> {
@@ -134,7 +164,8 @@ export class DeviceStorage implements Storage {
         // fall through to the mirror
       }
     }
-    const mirrored = await this.cs.getItem(CS_POS_PREFIX + id)
+    const cs = this.area()
+    const mirrored = cs ? await cs.getItem(CS_POS_PREFIX + id).catch(() => null) : null
     if (mirrored) {
       try {
         return JSON.parse(fromB64(mirrored)) as Position
@@ -148,7 +179,8 @@ export class DeviceStorage implements Storage {
   async saveSettings(s: Settings): Promise<void> {
     const raw = JSON.stringify(s)
     localStorage.setItem(SETTINGS_KEY, raw)
-    void this.cs.setItem(CS_SETTINGS_KEY, toB64(raw)).catch(() => {})
+    const cs = this.area()
+    if (cs) void cs.setItem(CS_SETTINGS_KEY, toB64(raw)).catch(() => {})
   }
 
   async loadSettings(): Promise<Settings | null> {
@@ -160,7 +192,8 @@ export class DeviceStorage implements Storage {
         // fall through to the mirror
       }
     }
-    const mirrored = await this.cs.getItem(CS_SETTINGS_KEY)
+    const cs = this.area()
+    const mirrored = cs ? await cs.getItem(CS_SETTINGS_KEY).catch(() => null) : null
     if (mirrored) {
       try {
         return JSON.parse(fromB64(mirrored)) as Settings
@@ -213,8 +246,14 @@ export class MemoryStorage implements Storage {
   }
 }
 
+function getCreationStorage(): CreationStorageArea | undefined {
+  return (globalThis as { creationStorage?: { plain?: CreationStorageArea } }).creationStorage?.plain
+}
+
+export function hasCreationStorage(): boolean {
+  return getCreationStorage() != null
+}
+
 export function createStorage(): Storage {
-  const cs = (globalThis as { creationStorage?: { plain?: CreationStorageArea } }).creationStorage
-  if (cs && cs.plain) return new DeviceStorage(cs.plain)
-  return new MemoryStorage()
+  return new DeviceStorage(getCreationStorage)
 }

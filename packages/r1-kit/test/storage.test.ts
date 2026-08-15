@@ -101,6 +101,29 @@ describe('DeviceStorage', () => {
     expect(await s.loadPosition('x')).toEqual({ chapter: 2, wordIndex: 45, wpm: 350, frac: 0.3 })
   })
 
+  test('resolves creationStorage lazily — injection after construction still persists', async () => {
+    let area: ReturnType<typeof fakeArea> | undefined
+    const s = new DeviceStorage(() => area)
+    await s.saveBook(book('x', 'Late'))
+    expect(await s.listBooks()).toEqual([{ id: 'x', title: 'Late', author: 'Jane', wordCount: 10, addedAt: 1000, sourceUrl: 'https://example.com/x.epub' }])
+    expect(store.has('book:x')).toBe(false)
+    area = fakeArea()
+    await s.saveBook(book('x', 'Late'))
+    expect(store.has('book:x')).toBe(true)
+    expect((await s.listBooks()).map((m) => m.id)).toEqual(['x'])
+  })
+
+  test('without creationStorage, books survive within the session and positions still work', async () => {
+    const s = new DeviceStorage(() => undefined)
+    await s.saveBook(book('x', 'Session'))
+    expect((await s.listBooks()).map((m) => m.id)).toEqual(['x'])
+    expect((await s.loadBook('x'))?.title).toBe('Session')
+    await s.savePosition('x', { chapter: 0, wordIndex: 1, wpm: 300 })
+    expect(await s.loadPosition('x')).toEqual({ chapter: 0, wordIndex: 1, wpm: 300 })
+    await s.deleteBook('x')
+    expect(await s.listBooks()).toEqual([])
+  })
+
   test('settings mirror and fall back the same way', async () => {
     const s = new DeviceStorage(fakeArea())
     await s.saveSettings(settings)

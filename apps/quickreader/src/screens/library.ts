@@ -1,4 +1,4 @@
-import { attachInputs, createListNav, visibleWindow } from 'r1-kit'
+import { attachInputs, createListNav, hasCreationStorage, visibleWindow } from 'r1-kit'
 import type { Ctx } from '../main'
 
 const ROW_H = 46
@@ -17,7 +17,7 @@ export function libraryScreen(ctx: Ctx): () => void {
   const brandText = document.createElement('span')
   brandText.textContent = 'QuickReader'
   const version = document.createElement('span')
-  version.textContent = ' · v' + __COMMIT_SHA__.slice(0, 6)
+  version.textContent = ` · v${__COMMIT_SHA__.slice(0, 6)} · ${hasCreationStorage() ? 'storage:device' : 'storage:memory'}`
   version.style.color = 'var(--dim)'
   brand.append(brandText, version)
   const rows = document.createElement('div')
