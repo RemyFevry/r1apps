@@ -1,5 +1,5 @@
 import { installPayload, renderQr } from 'r1-kit'
-import { rawUrlToTransitCode } from './ingestion/transit'
+import { decodeTransitRef, rawUrlToTransitCode, transitRawUrl } from './ingestion/transit'
 
 const themeColor = '#FE5000'
 const appUrl = new URL('.', location.href).href
@@ -48,7 +48,13 @@ makeQr.addEventListener('click', () => {
   generateBookQr(url)
 })
 
-const prefill = new URLSearchParams(location.search).get('book')
+const params = new URLSearchParams(location.search)
+const prefill = params.get('book') ?? (() => {
+  const code = params.get('b')
+  if (!code) return null
+  const ref = decodeTransitRef(code)
+  return ref ? transitRawUrl(ref) : null
+})()
 if (prefill && /^https?:\/\//i.test(prefill)) {
   bookUrl.value = prefill
   generateBookQr(prefill)
