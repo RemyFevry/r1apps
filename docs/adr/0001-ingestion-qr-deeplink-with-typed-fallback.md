@@ -33,16 +33,25 @@ public so committing books into it is effectively distribution and is ruled out.
 - Does the R1's cache-by-URL behavior treat each `?add=` variant as a new install
   card? If yes, the companion page warns; the typed fallback is the escape hatch.
 
-## Companion upload (amendment, 2026-08-15)
+## Companion upload (amendment, 2026-08-15, revised same day)
 
-The companion page can also upload a local .epub (≤150 MB) to
-[filebin.net](https://filebin.net) — a public temporary host with unguessable bin
-URLs and `Access-Control-Allow-Origin: *` on upload and download (verified) — and
-QR the resulting link through the same deep-link pipeline. Ephemeral hosting
-suffices because ingestion copies the book into on-device storage; the link
-self-destructs ~6 days after its last download. Books still never touch this
-repo. The manual-URL path remains first-class; the third-party transit is
-disclosed on the page.
+Getting a local .epub to the device needs a host that (a) allows browser-side
+upload or scripted upload, and (b) serves **raw bytes with CORS** to the R1's
+browser user agent. Live testing eliminated the paste-host ecosystem: filebin
+serves an HTML interstitial to browser UAs (curl gets bytes, browsers don't —
+this produced "Not a readable EPUB" on-device); litterbox/0x0 are blocked or
+disabled; catbox/uguu/x0 lack CORS on upload or download; pixeldrain requires
+an API key; gofile's endpoint moved.
+
+Adopted: **GitHub raw transit** — `scripts/host-book.mjs` (pnpm host-book)
+pushes the epub to an unguessable public repo `r1book-<rand>` via the contents
+API and prints the raw URL plus the companion deep-link
+(`install.html?book=<url>` auto-generates the QR). Verified:
+`raw.githubusercontent.com` sends `Access-Control-Allow-Origin: *`, serves raw
+bytes to browser UAs, no redirects, 30 MB round-trip hash-identical.
+Ephemeral: `--clean` deletes the transit repos (needs `delete_repo` scope).
+Books still never touch this repo's git history; the unguessable-URL exposure
+matches what any public host gives. The manual-URL path remains first-class.
 
 ## Consequences
 

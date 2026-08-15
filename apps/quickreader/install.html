@@ -15,11 +15,8 @@
     .qr { background: #fff; padding: 8px; border-radius: 8px; width: fit-content; min-height: 40px; }
     .row { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
     input[type="url"] { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); background: #0e0e10; color: #fff; font-size: 14px; }
-    button, .btn { padding: 8px 14px; border-radius: 6px; border: none; background: #fe5000; color: #0e0e10; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-block; }
-    .btn[for="book-file"] { background: rgba(255,255,255,0.12); color: #fff; font-weight: 500; }
-    .progress { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.12); margin: 4px 0; }
-    .progress:has(#bar:empty) { display: none; }
-    #bar { height: 100%; width: 0; border-radius: 3px; background: #fe5000; transition: width 0.2s; }
+    button { padding: 8px 14px; border-radius: 6px; border: none; background: #fe5000; color: #0e0e10; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-block; }
+    code { background: rgba(255,255,255,0.1); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
     .note { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 8px; }
     #book-qr:empty { display: none; }
   </style>
@@ -40,15 +37,9 @@
         <input id="book-url" type="url" placeholder="https://example.com/book.epub">
         <button id="make-qr">Make QR</button>
       </div>
-      <div class="row">
-        <label class="btn" for="book-file">…or upload a .epub</label>
-        <input id="book-file" type="file" accept=".epub,application/epub+zip" hidden>
-      </div>
-      <div class="progress"><div id="bar"></div></div>
-      <p class="note" id="upload-note"></p>
+      <p class="note"><strong>From your computer:</strong> run <code>pnpm host-book /path/to/book.epub</code> in the r1apps repo — it uploads to an unguessable GitHub URL and opens this page with the QR ready.</p>
       <div id="book-qr" class="qr"></div>
       <p class="note" id="book-note">Scan to open QuickReader with this book.</p>
-      <p class="note">Uploads go to filebin.net — a public temporary host with an unguessable link (auto-deleted ~6 days after last download). The R1 keeps its own copy once it downloads.</p>
       <p class="note">Heads-up: scanning a book QR creates a second QuickReader card in your R1 stack (each QR is a new install URL). Books and progress are stored on the device and shared between them.</p>
     </section>
   </main>
