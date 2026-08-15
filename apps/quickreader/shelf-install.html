@@ -38,17 +38,22 @@
     const shelfRoot = new URL('.', location.href).href
     const ver = new URLSearchParams(location.search).get('v') ?? new Date().getTime().toString(36)
     const url = `${shelfRoot}app.html?v=${ver}`
-    const { installPayload, renderQr } = (globalThis).__shelfInstall
-    renderQr(
-      document.getElementById('install-qr'),
-      installPayload({
-        title: 'QuickReader shelf',
-        url,
-        description: 'RSVP speed reader — personal shelf',
-        themeColor: '#FE5000',
-      }),
-    )
-    status.textContent = 'QR ready — app URL: ' + url
+    const lib = globalThis.__shelfInstall
+    if (!lib) {
+      status.textContent = 'Failed to load QR module — reload, or check console for the failing script URL.'
+    } else {
+      const { installPayload, renderQr } = lib
+      renderQr(
+        document.getElementById('install-qr'),
+        installPayload({
+          title: 'QuickReader shelf',
+          url,
+          description: 'RSVP speed reader — personal shelf',
+          themeColor: '#FE5000',
+        }),
+      )
+      status.textContent = 'QR ready — app URL: ' + url
+    }
   </script>
 </body>
 </html>

@@ -163,9 +163,9 @@ async function main() {
         .replaceAll('/r1apps/quickreader/', SHELF_BASE)
         .replace('<title>QuickReader</title>', '<title>QuickReader shelf</title>')
       writeFileSync(join(stage, 'app.html'), shelfHtml)
-      const companion = readFileSync(join(stage, 'shelf-install.html'), 'utf8').replace(
-        './assets/install.js',
-        SHELF_BASE + 'assets/install.js',
+      const companion = readFileSync(join(stage, 'shelf-install.html'), 'utf8').replaceAll(
+        '/r1apps/quickreader/',
+        SHELF_BASE,
       )
       writeFileSync(join(stage, 'install.html'), companion)
       rmSync(join(stage, 'shelf-install.html'))
