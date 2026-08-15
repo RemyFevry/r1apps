@@ -33,6 +33,17 @@ public so committing books into it is effectively distribution and is ruled out.
 - Does the R1's cache-by-URL behavior treat each `?add=` variant as a new install
   card? If yes, the companion page warns; the typed fallback is the escape hatch.
 
+## Companion upload (amendment, 2026-08-15)
+
+The companion page can also upload a local .epub (≤150 MB) to
+[filebin.net](https://filebin.net) — a public temporary host with unguessable bin
+URLs and `Access-Control-Allow-Origin: *` on upload and download (verified) — and
+QR the resulting link through the same deep-link pipeline. Ephemeral hosting
+suffices because ingestion copies the book into on-device storage; the link
+self-destructs ~6 days after its last download. Books still never touch this
+repo. The manual-URL path remains first-class; the third-party transit is
+disclosed on the page.
+
 ## Consequences
 
 - One pipeline, two doors — ingestion logic is testable headless.
