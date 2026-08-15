@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QuickReader — install</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { background: #0e0e10; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 24px; }
+    main { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+    h1 { font-size: 22px; margin: 0; }
+    h2 { font-size: 14px; color: #fe5000; margin: 0 0 8px; }
+    p { font-size: 14px; color: rgba(255,255,255,0.7); margin: 0 0 8px; }
+    section { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 16px; }
+    .qr { background: #fff; padding: 8px; border-radius: 8px; width: fit-content; min-height: 40px; }
+    .row { display: flex; gap: 8px; margin: 8px 0; }
+    input { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); background: #0e0e10; color: #fff; font-size: 14px; }
+    button { padding: 8px 14px; border-radius: 6px; border: none; background: #fe5000; color: #0e0e10; font-weight: 600; font-size: 14px; }
+    .note { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 8px; }
+    #book-qr:empty { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>QuickReader</h1>
+    <p>RSVP speed reader for EPUB ebooks on the Rabbit R1 — words flash one at a time.</p>
+    <section>
+      <h2>Install on your R1</h2>
+      <div id="install-qr" class="qr"></div>
+      <p class="note">Open the R1 camera and scan this code.</p>
+    </section>
+    <section>
+      <h2>Add a book</h2>
+      <p>Public URL of an EPUB file. The host must allow cross-origin requests — GitHub Pages, Netlify and most static hosts do.</p>
+      <div class="row">
+        <input id="book-url" type="url" placeholder="https://example.com/book.epub">
+        <button id="make-qr">Make QR</button>
+      </div>
+      <div id="book-qr" class="qr"></div>
+      <p class="note" id="book-note">Scan to open QuickReader with this book.</p>
+    </section>
+  </main>
+  <script type="module" src="/src/install.ts"></script>
+</body>
+</html>

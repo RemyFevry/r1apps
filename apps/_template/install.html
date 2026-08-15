@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>R1 App — install</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { background: #0e0e10; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 24px; }
+    main { max-width: 480px; margin: 0 auto; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 14px; color: #fe5000; margin: 16px 0 8px; }
+    .qr { background: #fff; padding: 8px; border-radius: 8px; width: fit-content; min-height: 40px; }
+    .note { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>R1 App</h1>
+    <h2>Install on your R1</h2>
+    <div id="install-qr" class="qr"></div>
+    <p class="note">Open the R1 camera and scan this code.</p>
+  </main>
+  <script type="module" src="/src/install.ts"></script>
+</body>
+</html>
