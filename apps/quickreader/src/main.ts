@@ -1,5 +1,6 @@
 import './style.css'
 import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, type BookRecord, type Settings, type Storage } from 'r1-kit'
+import { ensureBundledBooks } from './ingestion/bundled'
 import { decodeTransitRef, transitRawUrl } from './ingestion/transit'
 import { deepLinkScreen } from './screens/deeplink'
 import { libraryScreen } from './screens/library'
@@ -61,6 +62,7 @@ async function boot(): Promise<void> {
   applyPlatform()
   const saved = await storage.loadSettings()
   Object.assign(settings, saved ?? DEFAULT_SETTINGS)
+  await ensureBundledBooks(storage, __BUNDLED_BOOKS__, __BUNDLED_BOOKS_SHA__)
   const params = new URLSearchParams(location.search)
   const add = params.get('add') ?? (() => {
     const code = params.get('b')
