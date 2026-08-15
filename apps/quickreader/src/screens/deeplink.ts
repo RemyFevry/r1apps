@@ -13,10 +13,14 @@ export function deepLinkScreen(ctx: Ctx, url: string): () => void {
   const link = document.createElement('div')
   link.className = 'hint'
   link.textContent = url
+  link.style.wordBreak = 'break-all'
   const status = document.createElement('div')
   status.className = 'status'
   status.textContent = 'Downloading…'
-  screen.append(h2, link, status)
+  const hint = document.createElement('div')
+  hint.className = 'status'
+  hint.textContent = 'Side button → library'
+  screen.append(h2, link, status, hint)
   root.append(screen)
 
   const detach = attachInputs({
@@ -37,8 +41,7 @@ export function deepLinkScreen(ctx: Ctx, url: string): () => void {
       nav.openBook(book)
     } catch (e) {
       failed = true
-      status.textContent = ingestErrorMessage(e)
-      link.textContent = 'Side button → library'
+      status.textContent = ingestErrorMessage(e) + ' — ' + url.slice(0, 60) + (url.length > 60 ? '…' : '')
     }
   })()
 

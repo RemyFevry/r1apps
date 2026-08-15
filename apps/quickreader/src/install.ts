@@ -1,4 +1,5 @@
 import { installPayload, renderQr } from 'r1-kit'
+import { rawUrlToTransitCode } from './ingestion/transit'
 
 const themeColor = '#FE5000'
 const appUrl = new URL('.', location.href).href
@@ -21,7 +22,11 @@ renderQr(
 )
 
 function generateBookQr(url: string): void {
-  const deepUrl = `${versionedUrl}&add=${encodeURIComponent(url)}`
+  // Prefer the compact transit code for raw.githubusercontent URLs: the R1
+  // mangles/truncates long install URLs (on-device 404s), so keep the QR short.
+  const code = rawUrlToTransitCode(url)
+  const addParam = code ? `b=${code}` : `add=${encodeURIComponent(url)}`
+  const deepUrl = `${versionedUrl}&${addParam}`
   renderQr(
     bookQr,
     installPayload({

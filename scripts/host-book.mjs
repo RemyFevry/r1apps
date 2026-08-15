@@ -81,7 +81,8 @@ async function main() {
   }
 
   const rawUrl = `https://raw.githubusercontent.com/${account}/${repo}/main/${encodeURIComponent(name)}`
-  const deepLink = `${INSTALL_PAGE}?book=${encodeURIComponent(rawUrl)}`
+  const code = Buffer.from(`${account}|${repo}|${name}`).toString('base64url')
+  const deepLink = `${INSTALL_PAGE}?b=${code}`
   console.log('\nbook URL (paste anywhere, incl. the app\'s Add-book screen):')
   console.log(`  ${rawUrl}`)
   console.log('\nQR page (open on your phone/computer, scan with the R1):')

@@ -1,5 +1,6 @@
 import './style.css'
 import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, type BookRecord, type Settings, type Storage } from 'r1-kit'
+import { decodeTransitRef, transitRawUrl } from './ingestion/transit'
 import { deepLinkScreen } from './screens/deeplink'
 import { libraryScreen } from './screens/library'
 import { readerScreen } from './screens/reader'
@@ -60,7 +61,13 @@ async function boot(): Promise<void> {
   applyPlatform()
   const saved = await storage.loadSettings()
   Object.assign(settings, saved ?? DEFAULT_SETTINGS)
-  const add = new URLSearchParams(location.search).get('add')
+  const params = new URLSearchParams(location.search)
+  const add = params.get('add') ?? (() => {
+    const code = params.get('b')
+    if (!code) return null
+    const ref = decodeTransitRef(code)
+    return ref ? transitRawUrl(ref) : null
+  })()
   if (add) show((ctx) => deepLinkScreen(ctx, add))
   else nav.library()
 }

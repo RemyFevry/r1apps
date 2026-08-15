@@ -45,13 +45,21 @@ an API key; gofile's endpoint moved.
 
 Adopted: **GitHub raw transit** — `scripts/host-book.mjs` (pnpm host-book)
 pushes the epub to an unguessable public repo `r1book-<rand>` via the contents
-API and prints the raw URL plus the companion deep-link
-(`install.html?book=<url>` auto-generates the QR). Verified:
+API and prints the raw URL plus the companion deep-link. Verified:
 `raw.githubusercontent.com` sends `Access-Control-Allow-Origin: *`, serves raw
 bytes to browser UAs, no redirects, 30 MB round-trip hash-identical.
 Ephemeral: `--clean` deletes the transit repos (needs `delete_repo` scope).
 Books still never touch this repo's git history; the unguessable-URL exposure
 matches what any public host gives. The manual-URL path remains first-class.
+
+**Short-code deep-links (second revision, same day):** a full raw URL embedded
+in the QR (`?add=<encoded-url>`, ~180-char install URL) produced on-device
+404s — the R1 truncates/mangles long install URLs (the raw URL itself serves
+200 under every UA). Deep-links now carry a compact base64url transit code
+(`?b=<account|repo|file>`), keeping the install URL under ~110 chars; the app
+reconstructs the raw URL (apps/quickreader/src/ingestion/transit.ts). Full
+`?add=` URLs still work for arbitrary hosts. Ingest errors now display the
+exact URL that failed.
 
 ## Consequences
 
