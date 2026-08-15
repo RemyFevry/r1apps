@@ -254,6 +254,23 @@ export function hasCreationStorage(): boolean {
   return getCreationStorage() != null
 }
 
+export type StorageHealth = 'device' | 'write-lost' | 'absent'
+
+/** Write→read-back probe: a fire-and-forget bridge reports write-lost. */
+export async function probeDeviceStorage(): Promise<StorageHealth> {
+  const area = getCreationStorage()
+  if (!area) return 'absent'
+  try {
+    const token = 'probe-' + Date.now().toString(36)
+    await area.setItem('r1kit:probe', toB64(token))
+    const back = await area.getItem('r1kit:probe')
+    void area.removeItem('r1kit:probe').catch(() => {})
+    return back != null && fromB64(back) === token ? 'device' : 'write-lost'
+  } catch {
+    return 'write-lost'
+  }
+}
+
 export function createStorage(): Storage {
   return new DeviceStorage(getCreationStorage)
 }

@@ -1,5 +1,6 @@
-import { attachInputs, type Position, type Settings, type BookRecord } from 'r1-kit'
+import { attachInputs, installPayload, renderQr, type Position, type Settings, type BookRecord } from 'r1-kit'
 import { delayFor, orpIndex, previousSentenceStart } from '../engine/rsvp'
+import { bookmarkUrl } from '../ingestion/bookmark'
 import type { Ctx } from '../main'
 
 const FONT_PX: Record<Settings['font'], number> = { S: 20, M: 24, L: 30 }
@@ -178,6 +179,44 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     nav.library()
   }
 
+  let bookmarkEl: HTMLElement | null = null
+
+  function showBookmark(): void {
+    hideBookmark()
+    saveNow()
+    const el = document.createElement('div')
+    el.className = 'card-overlay'
+    const k = document.createElement('div')
+    k.className = 'k'
+    k.textContent = 'Bookmark — scan to resume here'
+    const qrBox = document.createElement('div')
+    qrBox.style.background = '#fff'
+    qrBox.style.padding = '6px'
+    qrBox.style.borderRadius = '8px'
+    const hint = document.createElement('div')
+    hint.className = 'status'
+    hint.textContent = `ch ${pos.chapter + 1} · word ${pos.wordIndex} · ${pos.wpm} wpm — side = back, hold = library`
+    el.append(k, qrBox, hint)
+    const base = location.href.split(/[?#]/)[0]
+    renderQr(
+      qrBox,
+      installPayload({
+        title: 'QuickReader bookmark',
+        url: bookmarkUrl(base, __COMMIT_SHA__, { id: book.id, chapter: pos.chapter, wordIndex: pos.wordIndex, wpm: pos.wpm }),
+        description: 'Resume reading',
+        themeColor: '#FE5000',
+      }),
+      180,
+    )
+    root.append(el)
+    bookmarkEl = el
+  }
+
+  function hideBookmark(): void {
+    bookmarkEl?.remove()
+    bookmarkEl = null
+  }
+
   const flush = () => saveNow()
   const onVis = () => {
     if (document.visibilityState === 'hidden') flush()
@@ -187,6 +226,10 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
 
   const detach = attachInputs({
     onSideClick() {
+      if (bookmarkEl) {
+        hideBookmark()
+        return
+      }
       if (cardTimer) {
         closeCard()
         return
@@ -211,7 +254,16 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
       resume()
     },
     onLongPressStart() {
-      exit()
+      if (bookmarkEl) {
+        hideBookmark()
+        exit()
+        return
+      }
+      if (playing) {
+        exit()
+        return
+      }
+      showBookmark()
     },
     onLongPressEnd() {},
     onScrollUp() {
@@ -248,6 +300,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     if (hudTimer) clearTimeout(hudTimer)
     window.removeEventListener('pagehide', flush)
     document.removeEventListener('visibilitychange', onVis)
+    hideBookmark()
     saveNow()
     detach()
   }
