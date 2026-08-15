@@ -1,7 +1,7 @@
 import type { BookRecord, Storage } from 'r1-kit'
 import { extractEpub, NotEpubError } from './epub'
 
-export const MAX_BYTES = 20 * 1024 * 1024
+export const MAX_BYTES = 150 * 1024 * 1024
 
 export type IngestErrorKind = 'bad-url' | 'network' | 'http' | 'too-large' | 'not-epub' | 'storage-full'
 
@@ -78,7 +78,7 @@ export function ingestErrorMessage(e: unknown): string {
       case 'http':
         return `Server returned an error${e.status ? ' (' + e.status + ')' : ''}`
       case 'too-large':
-        return 'Book too large (20 MB max)'
+        return 'Book too large (150 MB max)'
       case 'not-epub':
         return 'Not a readable EPUB'
       case 'storage-full':
