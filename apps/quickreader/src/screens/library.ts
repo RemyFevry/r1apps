@@ -14,7 +14,12 @@ export function libraryScreen(ctx: Ctx): () => void {
   screen.className = 'screen'
   const brand = document.createElement('div')
   brand.className = 'brand'
-  brand.textContent = 'QuickReader'
+  const brandText = document.createElement('span')
+  brandText.textContent = 'QuickReader'
+  const version = document.createElement('span')
+  version.textContent = ' · v' + __COMMIT_SHA__.slice(0, 6)
+  version.style.color = 'var(--dim)'
+  brand.append(brandText, version)
   const rows = document.createElement('div')
   rows.className = 'rows'
   screen.append(brand, rows)
