@@ -39,6 +39,11 @@ export default defineConfig({
       input: {
         main: 'index.html',
         install: 'install.html',
+        'shelf-install': 'shelf-install.html',
+      },
+      output: {
+        entryFileNames: (chunk) => (chunk.name === 'shelf-install' ? 'assets/shelf-install.js' : 'assets/[name]-[hash].js'),
+        chunkFileNames: 'assets/[name]-[hash].js',
       },
     },
   },

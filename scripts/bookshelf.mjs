@@ -24,6 +24,7 @@ const APP = 'quickreader'
 const SHELF_REPO_OWNER = 'remyf-agent'
 const SHELF_REPO = `${SHELF_REPO_OWNER}/r1-shelf`
 const SHELF_URL = `https://${SHELF_REPO_OWNER}.github.io/r1-shelf/`
+const SHELF_BASE = '/r1-shelf/'
 
 function die(msg) {
   console.error(msg)
@@ -150,8 +151,27 @@ async function main() {
 
     const dist = join(ROOT, 'apps', APP, 'dist')
     const tmp = mkdtempSync(join(tmpdir(), 'r1-shelf-'))
+    const stage = mkdtempSync(join(tmpdir(), 'r1-shelf-stage-'))
     let created = false
     try {
+      // Stage: only the app + shelf companion page, rebased onto the shelf path.
+      cpSync(dist + '/', stage + '/', { recursive: true })
+      rmSync(join(stage, 'install.html'))
+      rmSync(join(stage, 'index.html'))
+      const appHtml = readFileSync(join(dist, 'index.html'), 'utf8')
+      const shelfHtml = appHtml
+        .replaceAll('/r1apps/quickreader/', SHELF_BASE)
+        .replace('<title>QuickReader</title>', '<title>QuickReader shelf</title>')
+      writeFileSync(join(stage, 'app.html'), shelfHtml)
+      const companion = readFileSync(join(stage, 'shelf-install.html'), 'utf8').replace(
+        './assets/install.js',
+        SHELF_BASE + 'assets/install.js',
+      )
+      writeFileSync(join(stage, 'install.html'), companion)
+      rmSync(join(stage, 'shelf-install.html'))
+      mkdirSync(join(stage, '.github/workflows'), { recursive: true })
+      writeFileSync(join(stage, '.github/workflows/deploy.yml'), SHELF_WORKFLOW)
+
       let exists = true
       try {
         run('gh', ['api', `repos/${SHELF_REPO}`, '--jq', '.full_name'])
@@ -163,14 +183,11 @@ async function main() {
         run('gh', ['repo', 'create', SHELF_REPO, '--public', '--description', 'QuickReader shelf (personal build)'])
         created = true
       }
-      run('git', ['init', '-b', 'main'], { cwd: tmp })
-      run('git', ['remote', 'add', 'origin', `https://github.com/${SHELF_REPO}.git`], { cwd: tmp })
-      cpSync(dist + '/', tmp + '/', { recursive: true })
-      mkdirSync(join(tmp, '.github/workflows'), { recursive: true })
-      writeFileSync(join(tmp, '.github/workflows/deploy.yml'), SHELF_WORKFLOW)
-      run('git', ['add', '-A'], { cwd: tmp })
-      run('git', ['commit', '-m', `shelf sync v=${ver}: ${bundledFiles().length} book(s)`], { cwd: tmp })
-      run('git', ['push', '-u', 'origin', 'main', '--force'], { cwd: tmp })
+      run('git', ['init', '-b', 'main'], { cwd: stage })
+      run('git', ['remote', 'add', 'origin', `https://github.com/${SHELF_REPO}.git`], { cwd: stage })
+      run('git', ['add', '-A'], { cwd: stage })
+      run('git', ['commit', '-m', `shelf sync v=${ver}: ${bundledFiles().length} book(s)`], { cwd: stage })
+      run('git', ['push', '-u', 'origin', 'main', '--force'], { cwd: stage })
 
       let pagesMissing = true
       try {
@@ -193,13 +210,14 @@ async function main() {
 
       console.log(`\nshelf deployed (v=${ver})`)
       console.log('install QR page (open on phone/computer, scan with the R1):')
-      console.log(`  ${SHELF_URL}install.html`)
+      console.log(`  ${SHELF_URL}install.html?v=${ver}`)
       console.log('\nnotes:')
-      console.log('  - books appear in the library on first open of the new version')
+      console.log('  - the R1 opens app.html at the shelf root; books appear on first open of a new version')
       console.log('  - the shelf repo is public (unguessable exposure model, same as r1book transit)')
       console.log('  - adding books later: pnpm bookshelf add … && pnpm bookshelf sync, rescan the QR')
     } finally {
       rmSync(tmp, { recursive: true, force: true })
+      rmSync(stage, { recursive: true, force: true })
     }
     return
   }

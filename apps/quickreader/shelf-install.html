@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QuickReader shelf — install</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { background: #0e0e10; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 24px; }
+    main { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+    h1 { font-size: 22px; margin: 0; }
+    h2 { font-size: 14px; color: #fe5000; margin: 0 0 8px; }
+    p { font-size: 14px; color: rgba(255,255,255,0.7); margin: 0 0 8px; }
+    section { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 16px; }
+    .qr { background: #fff; padding: 8px; border-radius: 8px; width: fit-content; min-height: 40px; }
+    .note { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 8px; }
+    #status { font-size: 12px; color: rgba(255,255,255,0.75); margin-top: 8px; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>QuickReader <span style="color:#fe5000">shelf</span></h1>
+    <p>Personal build — your bundled books are already inside the app.</p>
+    <section>
+      <h2>Install on your R1</h2>
+      <div id="install-qr" class="qr"></div>
+      <p class="note">Open the R1 camera and scan this code. The library opens with your books already loaded.</p>
+      <p id="status"></p>
+    </section>
+    <section>
+      <h2>Update later</h2>
+      <p class="note"><code>pnpm bookshelf add &lt;book.epub&gt;</code> · <code>pnpm bookshelf sync</code> — then rescan this page's QR (it re-generates with the new version, so the R1 picks up the fresh build).</p>
+    </section>
+  </main>
+  <script type="module" src="/src/shelf-install.ts"></script>
+  <script type="module">
+    const status = document.getElementById('status')
+    const shelfRoot = new URL('.', location.href).href
+    const ver = new URLSearchParams(location.search).get('v') ?? new Date().getTime().toString(36)
+    const url = `${shelfRoot}app.html?v=${ver}`
+    const { installPayload, renderQr } = (globalThis).__shelfInstall
+    renderQr(
+      document.getElementById('install-qr'),
+      installPayload({
+        title: 'QuickReader shelf',
+        url,
+        description: 'RSVP speed reader — personal shelf',
+        themeColor: '#FE5000',
+      }),
+    )
+    status.textContent = 'QR ready — app URL: ' + url
+  </script>
+</body>
+</html>
