@@ -3,7 +3,7 @@ import { extractEpub, NotEpubError } from './epub'
 
 export const MAX_BYTES = 20 * 1024 * 1024
 
-export type IngestErrorKind = 'bad-url' | 'network' | 'http' | 'too-large' | 'not-epub'
+export type IngestErrorKind = 'bad-url' | 'network' | 'http' | 'too-large' | 'not-epub' | 'storage-full'
 
 export class IngestError extends Error {
   constructor(
@@ -60,7 +60,11 @@ export async function ingestBook(storage: Storage, url: string): Promise<BookRec
     addedAt: Date.now(),
     sourceUrl: u.href,
   }
-  await storage.saveBook(record)
+  try {
+    await storage.saveBook(record)
+  } catch {
+    throw new IngestError('storage-full')
+  }
   return record
 }
 
@@ -77,6 +81,8 @@ export function ingestErrorMessage(e: unknown): string {
         return 'Book too large (20 MB max)'
       case 'not-epub':
         return 'Not a readable EPUB'
+      case 'storage-full':
+        return 'Storage full — delete a book from the library and try again'
     }
   }
   return 'Something went wrong'

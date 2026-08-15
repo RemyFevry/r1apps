@@ -1,4 +1,7 @@
-export interface ZipEntries extends Map<string, Uint8Array> {}
+export interface ZipFile {
+  has(name: string): boolean
+  read(name: string): Promise<Uint8Array>
+}
 
 interface CdEntry {
   name: string
@@ -20,15 +23,43 @@ async function supportsDeflateRaw(): Promise<boolean> {
   return nativeOk
 }
 
-export async function unzip(data: Uint8Array): Promise<ZipEntries> {
-  if (await supportsDeflateRaw()) return unzipNative(data)
+export async function openZip(data: Uint8Array): Promise<ZipFile> {
+  if (await supportsDeflateRaw()) return openZipNative(data)
   const { unzipSync } = await import('fflate')
-  const res = unzipSync(data)
-  const out: ZipEntries = new Map()
-  for (const [k, v] of Object.entries(res)) {
-    if (!k.endsWith('/')) out.set(k, v)
+  const files = unzipSync(data)
+  const cache = new Map<string, Uint8Array>()
+  return {
+    has(name: string) {
+      return Object.prototype.hasOwnProperty.call(files, name) && !name.endsWith('/')
+    },
+    async read(name: string) {
+      const hit = cache.get(name)
+      if (hit) return hit
+      const bytes = new Uint8Array(files[name])
+      cache.set(name, bytes)
+      return bytes
+    },
   }
-  return out
+}
+
+function openZipNative(data: Uint8Array): ZipFile {
+  const byName = new Map(readCentralDirectory(data).filter((e) => !e.name.endsWith('/')).map((e) => [e.name, e]))
+  const cache = new Map<string, Uint8Array>()
+  return {
+    has(name: string) {
+      return byName.has(name)
+    },
+    async read(name: string) {
+      const hit = cache.get(name)
+      if (hit) return hit
+      const e = byName.get(name)
+      if (!e) throw new Error('not in zip: ' + name)
+      const slice = data.subarray(e.dataOffset, e.dataOffset + e.compSize)
+      const out = e.method === 0 ? new Uint8Array(slice) : await inflateRaw(slice)
+      cache.set(name, out)
+      return out
+    },
+  }
 }
 
 function readCentralDirectory(data: Uint8Array): CdEntry[] {
@@ -61,16 +92,6 @@ function readCentralDirectory(data: Uint8Array): CdEntry[] {
     off += 46 + nameLen + extraLen + commentLen
   }
   return entries
-}
-
-async function unzipNative(data: Uint8Array): Promise<ZipEntries> {
-  const out: ZipEntries = new Map()
-  for (const e of readCentralDirectory(data)) {
-    if (e.name.endsWith('/')) continue
-    const slice = data.subarray(e.dataOffset, e.dataOffset + e.compSize)
-    out.set(e.name, e.method === 0 ? new Uint8Array(slice) : await inflateRaw(slice))
-  }
-  return out
 }
 
 async function inflateRaw(comp: Uint8Array): Promise<Uint8Array> {

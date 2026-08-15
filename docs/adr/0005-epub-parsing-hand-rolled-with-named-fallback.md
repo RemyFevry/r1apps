@@ -23,7 +23,9 @@ inflate.
      `linear="no"` handling) → per-chapter `DOMParser` (`application/xhtml+xml` with
      `text/html` fallback for malformed books) → paragraph-aware TreeWalker.
    - Word-stream cleanup owned here: strip soft hyphens (U+00AD) and zero-width chars,
-     collapse whitespace, split on `/[\p{L}\p{N}'’-]+/u`.
+     collapse whitespace, split on
+     `/["'(\[«]*[\p{L}\p{N}'’-]+[\])}"'’»…,;:!?.\-—–]*/gu` — words keep leading quotes
+     and trailing punctuation so the RSVP pause logic (ADR-0002) can see them.
    - Images/CSS/fonts never inflated. DRM unreadable by any approach — out of scope.
 2. **Named fallback:** if malformed-EPUB reports arrive from real books, vendor
    foliate-js's `epub.js` + `epubcfi.js` (MIT, 10 kB gz) fed by our own zip layer —

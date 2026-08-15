@@ -27,6 +27,9 @@ export interface Position {
 export type FontSize = 'S' | 'M' | 'L'
 export type Pacing = 'relaxed' | 'standard' | 'snappy'
 
+export const FONT_ORDER: FontSize[] = ['S', 'M', 'L']
+export const PACING_ORDER: Pacing[] = ['relaxed', 'standard', 'snappy']
+
 export interface Settings {
   defaultWpm: number
   orp: boolean
@@ -74,18 +77,22 @@ export interface CreationStorageArea {
 
 const BOOK_PREFIX = 'book:'
 const INDEX_KEY = 'library:index'
-const POS_PREFIX = 'r1:pos:'
-const SETTINGS_KEY = 'r1:settings'
+const POS_PREFIX = 'quickreader:pos:'
+const SETTINGS_KEY = 'quickreader:settings'
 
 export class DeviceStorage implements Storage {
   constructor(private cs: CreationStorageArea) {}
+
+  private async writeIndex(metas: BookMeta[]): Promise<void> {
+    await this.cs.setItem(INDEX_KEY, toB64(JSON.stringify(metas)))
+  }
 
   async saveBook(book: BookRecord): Promise<void> {
     await this.cs.setItem(BOOK_PREFIX + book.id, toB64(JSON.stringify(book)))
     const metas = await this.listBooks()
     const next = metas.filter((m) => m.id !== book.id)
     next.unshift({ id: book.id, title: book.title, author: book.author, wordCount: book.wordCount, addedAt: book.addedAt, sourceUrl: book.sourceUrl })
-    await this.cs.setItem(INDEX_KEY, toB64(JSON.stringify(next)))
+    await this.writeIndex(next)
   }
 
   async loadBook(id: string): Promise<BookRecord | null> {
@@ -100,7 +107,7 @@ export class DeviceStorage implements Storage {
 
   async deleteBook(id: string): Promise<void> {
     await this.cs.removeItem(BOOK_PREFIX + id)
-    await this.cs.setItem(INDEX_KEY, toB64(JSON.stringify((await this.listBooks()).filter((m) => m.id !== id))))
+    await this.writeIndex((await this.listBooks()).filter((m) => m.id !== id))
     localStorage.removeItem(POS_PREFIX + id)
   }
 

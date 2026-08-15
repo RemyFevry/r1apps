@@ -53,4 +53,13 @@ describe('ingestBook', () => {
     })
     await expect(ingestBook(new MemoryStorage(), 'https://example.com/x.epub')).rejects.toMatchObject({ kind: 'network' })
   })
+
+  test('names the culprit when storage fills up', async () => {
+    globalThis.fetch = okFetch(epubBytes())
+    const full = new MemoryStorage()
+    full.saveBook = async () => {
+      throw new Error('QuotaExceeded')
+    }
+    await expect(ingestBook(full, 'https://example.com/big.epub')).rejects.toMatchObject({ kind: 'storage-full' })
+  })
 })

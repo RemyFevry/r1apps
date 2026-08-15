@@ -1,13 +1,13 @@
-import { attachInputs, visibleWindow, type BookMeta, type Position, type Settings, type Storage } from 'r1-kit'
-import type { Nav } from '../main'
+import { attachInputs, createListNav, visibleWindow } from 'r1-kit'
+import type { Ctx } from '../main'
 
 const ROW_H = 46
 const VIEW_H = 236
 
-export function libraryScreen(root: HTMLElement, storage: Storage, _settings: Settings, nav: Nav): () => void {
-  let metas: BookMeta[] = []
+export function libraryScreen(ctx: Ctx): () => void {
+  const { root, storage, nav } = ctx
+  let metas: Awaited<ReturnType<typeof storage.listBooks>> = []
   let fracs = new Map<string, number>()
-  let selected = 0
   let confirmDelete = false
 
   const screen = document.createElement('div')
@@ -23,12 +23,23 @@ export function libraryScreen(root: HTMLElement, storage: Storage, _settings: Se
   const rowCount = () => metas.length + 2
   const isBook = (i: number) => i < metas.length
 
+  const nav2 = createListNav({
+    count: rowCount,
+    onChange: () => render(),
+    onCancel: () => {
+      if (confirmDelete) {
+        confirmDelete = false
+        render()
+      }
+    },
+  })
+
   function render(): void {
     rows.replaceChildren()
-    const { start, end } = visibleWindow(selected, rowCount(), ROW_H, VIEW_H)
+    const { start, end } = visibleWindow(nav2.selected, rowCount(), ROW_H, VIEW_H)
     for (let i = start; i < end; i++) {
       const row = document.createElement('div')
-      row.className = 'row' + (i === selected ? ' selected' : '')
+      row.className = 'row' + (i === nav2.selected ? ' selected' : '')
       const title = document.createElement('div')
       title.className = 't'
       const sub = document.createElement('div')
@@ -36,7 +47,7 @@ export function libraryScreen(root: HTMLElement, storage: Storage, _settings: Se
       if (isBook(i)) {
         const m = metas[i]
         title.textContent = m.title
-        if (confirmDelete && i === selected) {
+        if (confirmDelete && i === nav2.selected) {
           sub.textContent = 'Delete this book? scroll to cancel'
         } else {
           const frac = fracs.get(m.id)
@@ -58,19 +69,18 @@ export function libraryScreen(root: HTMLElement, storage: Storage, _settings: Se
     metas = await storage.listBooks()
     fracs = new Map()
     for (const m of metas) {
-      const p: Position | null = await storage.loadPosition(m.id)
+      const p = await storage.loadPosition(m.id)
       if (p?.frac != null) fracs.set(m.id, p.frac)
     }
-    selected = Math.min(selected, Math.max(0, rowCount() - 1))
     render()
   }
 
   const detach = attachInputs({
     async onSideClick() {
+      const selected = nav2.selected
       if (confirmDelete) {
-        const target = selected
         confirmDelete = false
-        if (isBook(target)) await storage.deleteBook(metas[target].id)
+        if (isBook(selected)) await storage.deleteBook(metas[selected].id)
         await reload()
         return
       }
@@ -84,26 +94,14 @@ export function libraryScreen(root: HTMLElement, storage: Storage, _settings: Se
       }
     },
     onLongPressStart() {
-      if (isBook(selected) && !confirmDelete) {
+      if (isBook(nav2.selected) && !confirmDelete) {
         confirmDelete = true
         render()
       }
     },
     onLongPressEnd() {},
-    onScrollUp() {
-      confirmDelete = false
-      if (selected > 0) {
-        selected--
-        render()
-      }
-    },
-    onScrollDown() {
-      confirmDelete = false
-      if (selected < rowCount() - 1) {
-        selected++
-        render()
-      }
-    },
+    onScrollUp: nav2.up,
+    onScrollDown: nav2.down,
   })
 
   void reload()

@@ -1,6 +1,6 @@
-import { attachInputs, type BookRecord, type Position, type Settings, type Storage } from 'r1-kit'
+import { attachInputs, type Position, type Settings, type BookRecord } from 'r1-kit'
 import { delayFor, orpIndex, previousSentenceStart } from '../engine/rsvp'
-import type { Nav } from '../main'
+import type { Ctx } from '../main'
 
 const FONT_PX: Record<Settings['font'], number> = { S: 20, M: 24, L: 30 }
 const CHAPTER_CARD_MS = 1500
@@ -8,13 +8,8 @@ const DOUBLE_CLICK_MS = 300
 const SAVE_EVERY = 50
 const FIT_CHARS = 13
 
-export function readerScreen(
-  root: HTMLElement,
-  storage: Storage,
-  settings: Settings,
-  book: BookRecord,
-  nav: Nav,
-): () => void {
+export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
+  const { root, storage, settings, nav } = ctx
   const offsets: number[] = []
   let acc = 0
   for (const c of book.chapters) {
@@ -167,7 +162,7 @@ export function readerScreen(
   }
 
   function resume(): void {
-    showHud(String(pos.wpm) + ' wpm')
+    showHud(`${pos.wpm} wpm`)
     playing = true
     step()
   }
@@ -226,7 +221,11 @@ export function readerScreen(
       pos = { ...saved }
       if (!pos.wpm) pos.wpm = settings.defaultWpm
     }
-    if (pos.chapter < book.chapters.length && pos.wordIndex < book.chapters[pos.chapter].words.length && pos.wordIndex > 0) {
+    if (
+      pos.chapter < book.chapters.length &&
+      pos.wordIndex > 0 &&
+      pos.wordIndex < book.chapters[pos.chapter].words.length
+    ) {
       playing = true
       step()
     } else {

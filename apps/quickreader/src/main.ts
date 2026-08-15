@@ -1,6 +1,6 @@
 import './style.css'
-import { DEFAULT_SETTINGS, createStorage, type BookRecord, type Settings } from 'r1-kit'
-import { addingScreen } from './screens/adding'
+import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, type BookRecord, type Settings, type Storage } from 'r1-kit'
+import { deepLinkScreen } from './screens/deeplink'
 import { libraryScreen } from './screens/library'
 import { readerScreen } from './screens/reader'
 import { addBookScreen } from './screens/addbook'
@@ -13,33 +13,55 @@ export interface Nav {
   settings(): void
 }
 
+export interface Ctx {
+  root: HTMLElement
+  storage: Storage
+  settings: Settings
+  nav: Nav
+}
+
 const app = document.getElementById('app') as HTMLElement
 const storage = createStorage()
 const settings: Settings = { ...DEFAULT_SETTINGS }
 
 let cleanup: (() => void) | null = null
 
-function show(mount: (root: HTMLElement) => () => void): void {
+function applyPlatform(): void {
+  const s = document.documentElement.style
+  s.setProperty('--bg', THEME.bg)
+  s.setProperty('--accent', THEME.accent)
+  s.setProperty('--accent-dim', THEME.accentDim)
+  s.setProperty('--text', THEME.text)
+  s.setProperty('--dim', THEME.textDim)
+  s.setProperty('--card', THEME.card)
+  s.setProperty('--border', THEME.border)
+  s.setProperty('--font', FONT.stack)
+  document.body.style.width = SCREEN.width + 'px'
+  document.body.style.height = SCREEN.height + 'px'
+}
+
+function show(mount: (ctx: Ctx) => () => void): void {
   cleanup?.()
   cleanup = null
   app.replaceChildren()
   const root = document.createElement('div')
   app.append(root)
-  cleanup = mount(root)
+  cleanup = mount({ root, storage, settings, nav })
 }
 
 const nav: Nav = {
-  library: () => show((r) => libraryScreen(r, storage, settings, nav)),
-  openBook: (book) => show((r) => readerScreen(r, storage, settings, book, nav)),
-  addBook: () => show((r) => addBookScreen(r, storage, settings, nav)),
-  settings: () => show((r) => settingsScreen(r, storage, settings, nav)),
+  library: () => show((ctx) => libraryScreen(ctx)),
+  openBook: (book) => show((ctx) => readerScreen(ctx, book)),
+  addBook: () => show((ctx) => addBookScreen(ctx)),
+  settings: () => show((ctx) => settingsScreen(ctx)),
 }
 
 async function boot(): Promise<void> {
+  applyPlatform()
   const saved = await storage.loadSettings()
   Object.assign(settings, saved ?? DEFAULT_SETTINGS)
   const add = new URLSearchParams(location.search).get('add')
-  if (add) show((r) => addingScreen(r, storage, nav, add))
+  if (add) show((ctx) => deepLinkScreen(ctx, add))
   else nav.library()
 }
 

@@ -1,5 +1,5 @@
-import { attachInputs, type Settings, type Storage } from 'r1-kit'
-import type { Nav } from '../main'
+import { FONT_ORDER, PACING_ORDER, attachInputs, createListNav } from 'r1-kit'
+import type { Ctx } from '../main'
 
 interface Row {
   label: string
@@ -7,7 +7,13 @@ interface Row {
   act(): void
 }
 
-export function settingsScreen(root: HTMLElement, storage: Storage, settings: Settings, nav: Nav): () => void {
+function cycle<T>(order: T[], current: T): T {
+  return order[(order.indexOf(current) + 1) % order.length]
+}
+
+export function settingsScreen(ctx: Ctx): () => void {
+  const { root, storage, settings } = ctx
+
   const rows: Row[] = [
     {
       label: 'Default speed',
@@ -27,20 +33,17 @@ export function settingsScreen(root: HTMLElement, storage: Storage, settings: Se
       label: 'Font size',
       value: () => settings.font,
       act: () => {
-        settings.font = settings.font === 'S' ? 'M' : settings.font === 'M' ? 'L' : 'S'
+        settings.font = cycle(FONT_ORDER, settings.font)
       },
     },
     {
       label: 'Pacing',
       value: () => settings.pacing,
       act: () => {
-        settings.pacing = settings.pacing === 'relaxed' ? 'standard' : settings.pacing === 'standard' ? 'snappy' : 'relaxed'
+        settings.pacing = cycle(PACING_ORDER, settings.pacing)
       },
     },
   ]
-
-  let selected = 0
-  const total = () => rows.length + 1
 
   const screen = document.createElement('div')
   screen.className = 'screen'
@@ -52,6 +55,13 @@ export function settingsScreen(root: HTMLElement, storage: Storage, settings: Se
   screen.append(brand, list)
   root.append(screen)
 
+  const total = () => rows.length + 1
+
+  const nav = createListNav({
+    count: total,
+    onChange: () => render(),
+  })
+
   function persist(): void {
     void storage.saveSettings({ ...settings }).catch(() => {})
   }
@@ -60,7 +70,7 @@ export function settingsScreen(root: HTMLElement, storage: Storage, settings: Se
     list.replaceChildren()
     for (let i = 0; i < total(); i++) {
       const row = document.createElement('div')
-      row.className = 'row' + (i === selected ? ' selected' : '')
+      row.className = 'row' + (i === nav.selected ? ' selected' : '')
       const t = document.createElement('div')
       const s = document.createElement('div')
       s.className = 's'
@@ -79,13 +89,13 @@ export function settingsScreen(root: HTMLElement, storage: Storage, settings: Se
 
   function done(): void {
     persist()
-    nav.library()
+    ctx.nav.library()
   }
 
   const detach = attachInputs({
     onSideClick() {
-      if (selected < rows.length) {
-        rows[selected].act()
+      if (nav.selected < rows.length) {
+        rows[nav.selected].act()
         persist()
         render()
       } else {
@@ -96,18 +106,8 @@ export function settingsScreen(root: HTMLElement, storage: Storage, settings: Se
       done()
     },
     onLongPressEnd() {},
-    onScrollUp() {
-      if (selected > 0) {
-        selected--
-        render()
-      }
-    },
-    onScrollDown() {
-      if (selected < total() - 1) {
-        selected++
-        render()
-      }
-    },
+    onScrollUp: nav.up,
+    onScrollDown: nav.down,
   })
 
   render()

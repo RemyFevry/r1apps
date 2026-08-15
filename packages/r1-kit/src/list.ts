@@ -11,3 +11,38 @@ export function visibleWindow(
   if (start + visible > count) start = count - visible
   return { start, end: start + visible }
 }
+
+export interface ListNavOptions {
+  count(): number
+  onChange(): void
+  onCancel?(): void
+}
+
+export interface ListNav {
+  readonly selected: number
+  up(): void
+  down(): void
+}
+
+export function createListNav(opts: ListNavOptions): ListNav {
+  const state = { selected: 0 }
+  return {
+    get selected() {
+      return state.selected
+    },
+    up() {
+      opts.onCancel?.()
+      if (state.selected > 0) {
+        state.selected--
+        opts.onChange()
+      }
+    },
+    down() {
+      opts.onCancel?.()
+      if (state.selected < opts.count() - 1) {
+        state.selected++
+        opts.onChange()
+      }
+    },
+  }
+}

@@ -1,8 +1,9 @@
-import { attachInputs, type Storage } from 'r1-kit'
+import { attachInputs } from 'r1-kit'
 import { ingestBook, ingestErrorMessage } from '../ingestion/ingest'
-import type { Nav } from '../main'
+import type { Ctx } from '../main'
 
-export function addingScreen(root: HTMLElement, storage: Storage, nav: Nav, url: string): () => void {
+export function deepLinkScreen(ctx: Ctx, url: string): () => void {
+  const { root, storage, nav } = ctx
   let failed = false
 
   const screen = document.createElement('div')

@@ -1,4 +1,4 @@
-import { unzip, type Chapter } from 'r1-kit'
+import { openZip, type Chapter, type ZipFile } from 'r1-kit'
 
 export interface ExtractedBook {
   title: string
@@ -17,25 +17,29 @@ export function wordsOf(text: string): string[] {
 }
 
 export async function extractEpub(data: Uint8Array): Promise<ExtractedBook> {
-  let files: Map<string, Uint8Array>
+  let zip: ZipFile
   try {
-    files = await unzip(data)
+    zip = await openZip(data)
   } catch (e) {
     throw new NotEpubError(e instanceof Error ? e.message : 'unreadable zip')
   }
   const dec = new TextDecoder('utf-8')
-  const text = (name: string): string | null => {
-    const f = files.get(name)
-    return f ? dec.decode(f) : null
+  const text = async (name: string): Promise<string | null> => {
+    if (!zip.has(name)) return null
+    try {
+      return dec.decode(await zip.read(name))
+    } catch {
+      throw new NotEpubError('failed to inflate ' + name)
+    }
   }
 
-  const containerRaw = text('META-INF/container.xml')
+  const containerRaw = await text('META-INF/container.xml')
   if (!containerRaw) throw new NotEpubError('missing META-INF/container.xml')
   const container = parseXml(containerRaw)
   const rootfile = container.getElementsByTagName('rootfile')[0]?.getAttribute('full-path')
   if (!rootfile) throw new NotEpubError('missing rootfile in container.xml')
   const opfDir = dirOf(rootfile)
-  const opfRaw = text(rootfile)
+  const opfRaw = await text(rootfile)
   if (!opfRaw) throw new NotEpubError('missing package document ' + rootfile)
   const opf = parseXml(opfRaw)
 
@@ -75,11 +79,11 @@ export async function extractEpub(data: Uint8Array): Promise<ExtractedBook> {
   }
   if (!hrefs.length) throw new NotEpubError('no spine documents')
 
-  const titles = readTocTitles(text, items, spineEl)
+  const titles = await readTocTitles(text, items, spineEl)
 
   const chapters: Chapter[] = []
   for (const href of hrefs) {
-    const raw = text(href)
+    const raw = await text(href)
     if (raw == null) continue
     const doc = parseChapterDoc(raw)
     const { words, paras } = extractWords(doc)
@@ -128,11 +132,11 @@ function extractWords(doc: Document): { words: string[]; paras: number[] } {
   return { words, paras }
 }
 
-function readTocTitles(
-  text: (name: string) => string | null,
+async function readTocTitles(
+  text: (name: string) => Promise<string | null>,
   items: Map<string, { href: string; mediaType: string; properties: string }>,
   spineEl: Element | undefined,
-): Map<string, string> {
+): Promise<Map<string, string>> {
   const titles = new Map<string, string>()
   const put = (href: string, label: string) => {
     const t = label.replace(/\s+/g, ' ').trim()
@@ -141,7 +145,7 @@ function readTocTitles(
   const parser = new DOMParser()
   for (const it of items.values()) {
     if (!it.properties.split(/\s+/).includes('nav')) continue
-    const raw = text(it.href)
+    const raw = await text(it.href)
     if (!raw) continue
     const doc = parser.parseFromString(raw, 'text/html')
     const base = dirOf(it.href)
@@ -154,7 +158,7 @@ function readTocTitles(
   const tocId = spineEl?.getAttribute('toc')
   const ncx = tocId ? items.get(tocId) : undefined
   if (ncx) {
-    const raw = text(ncx.href)
+    const raw = await text(ncx.href)
     if (raw) {
       const doc = parser.parseFromString(raw, 'application/xml')
       const base = dirOf(ncx.href)

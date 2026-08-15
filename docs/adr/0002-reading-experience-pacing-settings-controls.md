@@ -25,7 +25,7 @@ which taxes single-click latency.
   ORP sits at a fixed anchor point.
 - **Chapter cards**: chapter title shown for ~1.5s before the chapter's first word.
 
-### User settings (Settings screen, keyboard-driven)
+### User settings (Settings screen — list-driven like the library: scroll selects, side button activates)
 
 - Default WPM (applies to new books)
 - ORP on/off

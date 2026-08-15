@@ -26,8 +26,9 @@ written frequently (every ~50 words).
 - Word streams + library index → `creationStorage.plain`, keys `book:<id>` and
   `library:index` (base64-encoded JSON per platform requirement). Books survive
   reinstalls.
-- Positions + settings → `localStorage`, keys `pos:<id>`, `settings`. Cheap sync
-  writes for throttled saves.
+- Positions + settings → `localStorage`, keys `quickreader:pos:<id>` and
+  `quickreader:settings` (namespaced — every app on the Pages origin shares one
+  localStorage). Cheap sync writes for throttled saves.
 
 ### The seam
 
