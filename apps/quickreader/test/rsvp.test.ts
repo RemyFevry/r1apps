@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { baseDelay, delayFor, endsClause, endsSentence, orpIndex, previousSentenceStart, sentenceStart } from '../src/engine/rsvp'
+import { baseDelay, chapterStart, delayFor, endsClause, endsSentence, jumpChapter, orpIndex, previousSentenceStart, sentenceStart } from '../src/engine/rsvp'
 
 describe('punctuation detection', () => {
   test('endsSentence', () => {
@@ -81,5 +81,38 @@ describe('sentence navigation', () => {
     expect(previousSentenceStart(words, 2)).toBe(0)
     expect(previousSentenceStart(words, 0)).toBe(0)
     expect(previousSentenceStart(words, 5)).toBe(2)
+  })
+})
+
+describe('chapter navigation', () => {
+  const chapters = [
+    { words: ['a', 'b', 'c', 'd', 'e'] },
+    { words: ['f', 'g'] },
+    { words: ['h'] },
+  ]
+
+  test('jumpChapter forward carries relative position', () => {
+    expect(jumpChapter(chapters, { chapter: 0, wordIndex: 2 }, 1)).toEqual({ chapter: 1, wordIndex: 1 })
+    expect(jumpChapter(chapters, { chapter: 0, wordIndex: 0 }, 2)).toEqual({ chapter: 2, wordIndex: 0 })
+    expect(jumpChapter(chapters, { chapter: 0, wordIndex: 4 }, 1)).toEqual({ chapter: 1, wordIndex: 1 })
+  })
+
+  test('jumpChapter backward carries relative position', () => {
+    expect(jumpChapter(chapters, { chapter: 2, wordIndex: 0 }, -1)).toEqual({ chapter: 1, wordIndex: 0 })
+    expect(jumpChapter(chapters, { chapter: 1, wordIndex: 1 }, -1)).toEqual({ chapter: 0, wordIndex: 4 })
+  })
+
+  test('clamps at the ends', () => {
+    expect(jumpChapter(chapters, { chapter: 0, wordIndex: 1 }, -1)).toEqual({ chapter: 0, wordIndex: 1 })
+    expect(jumpChapter(chapters, { chapter: 2, wordIndex: 0 }, 1)).toEqual({ chapter: 2, wordIndex: 0 })
+  })
+
+  test('single-word chapters do not divide by zero', () => {
+    expect(jumpChapter(chapters, { chapter: 1, wordIndex: 1 }, 1)).toEqual({ chapter: 2, wordIndex: 0 })
+  })
+
+  test('chapterStart clamps', () => {
+    expect(chapterStart({ words: ['x'] }, 5)).toBe(0)
+    expect(chapterStart({ words: ['x', 'y'] }, -3)).toBe(0)
   })
 })

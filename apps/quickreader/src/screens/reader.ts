@@ -1,5 +1,5 @@
-import { attachInputs, installPayload, renderQr, type Position, type Settings, type BookRecord } from 'r1-kit'
-import { delayFor, orpIndex, previousSentenceStart } from '../engine/rsvp'
+import { attachInputs, createListNav, installPayload, renderQr, visibleWindow, type Position, type Settings, type BookRecord } from 'r1-kit'
+import { delayFor, jumpChapter, orpIndex, previousSentenceStart } from '../engine/rsvp'
 import { bookmarkUrl } from '../ingestion/bookmark'
 import type { Ctx } from '../main'
 
@@ -71,7 +71,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
 
   function renderWord(): void {
     const w = curWord()
-    topChapter.textContent = book.chapters[pos.chapter].title
+    topChapter.textContent = `${book.chapters[pos.chapter].title} · ${pos.chapter + 1}/${book.chapters.length}`
     topPct.textContent = Math.floor((globalIndex() / book.wordCount) * 100) + '%'
     const base = FONT_PX[settings.font]
     wordline.style.fontSize = Math.round(Math.min(base, (base * FIT_CHARS) / Math.max(w.length, 1))) + 'px'
@@ -159,7 +159,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     }
     pausedAt = Date.now()
     saveNow()
-    showHud(`⏸ ${pos.wpm} wpm`, true)
+    showHud(`⏸ ${pos.wpm} wpm · hold = chapters`, true)
   }
 
   function resume(): void {
@@ -174,12 +174,90 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     else showHud(`⏸ ${pos.wpm} wpm`, true)
   }
 
+  function jumpChapters(delta: number): void {
+    const next = jumpChapter(book.chapters, pos, delta)
+    const changed = next.chapter !== pos.chapter
+    pos.chapter = next.chapter
+    pos.wordIndex = next.wordIndex
+    sinceSave = 0
+    saveNow()
+    if (!playing) renderWord()
+    if (changed) showHud(`Ⓒ ${pos.chapter + 1}/${book.chapters.length}`, true)
+  }
+
   function exit(): void {
     saveNow()
     nav.library()
   }
 
   let bookmarkEl: HTMLElement | null = null
+  let chapterEl: HTMLElement | null = null
+  let chapterNav: ReturnType<typeof createListNav> | null = null
+
+  const ROW = 36
+
+  function showChapterIndex(): void {
+    hideChapterIndex()
+    if (bookmarkEl) hideBookmark()
+    const rowsCount = () => book.chapters.length + 2
+    const isBookmarkRow = (i: number) => i === 0
+    const isLibraryRow = (i: number) => i === rowsCount() - 1
+    const chapterRow = (i: number) => i - 1
+
+    const el = document.createElement('div')
+    el.className = 'card-overlay'
+    el.style.justifyContent = 'flex-start'
+    el.style.paddingTop = '16px'
+    const k = document.createElement('div')
+    k.className = 'k'
+    k.textContent = 'Navigate'
+    k.style.marginBottom = '8px'
+    const list = document.createElement('div')
+    list.style.width = '100%'
+    list.style.overflow = 'hidden'
+    const hint = document.createElement('div')
+    hint.className = 'status'
+    hint.textContent = 'scroll = move · side = open · hold = cancel'
+    hint.style.marginTop = '8px'
+    el.append(k, list, hint)
+
+    chapterNav = createListNav({
+      count: rowsCount,
+      onChange: () => {
+        list.replaceChildren()
+        const win = visibleWindow(chapterNav!.selected, rowsCount(), ROW, 200)
+        for (let i = win.start; i < win.end; i++) {
+          const row = document.createElement('div')
+          row.className = 'row' + (i === chapterNav!.selected ? ' selected' : '')
+          row.style.height = ROW + 'px'
+          const t = document.createElement('div')
+          t.className = 't'
+          if (isBookmarkRow(i)) {
+            t.className = 't pinned'
+            t.textContent = '🔖 Bookmark here'
+          } else if (isLibraryRow(i)) {
+            t.className = 't pinned'
+            t.textContent = 'Library'
+          } else {
+            const c = book.chapters[chapterRow(i)]
+            t.textContent = `${chapterRow(i) + 1}. ${c.title}`
+            if (chapterRow(i) === pos.chapter) t.style.color = 'var(--accent)'
+          }
+          row.append(t)
+          list.append(row)
+        }
+      },
+    })
+    chapterNav.jumpTo(pos.chapter + 1)
+    root.append(el)
+    chapterEl = el
+  }
+
+  function hideChapterIndex(): void {
+    chapterEl?.remove()
+    chapterEl = null
+    chapterNav = null
+  }
 
   function showBookmark(): void {
     hideBookmark()
@@ -226,6 +304,30 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
 
   const detach = attachInputs({
     onSideClick() {
+      if (chapterEl) {
+        const sel = chapterNav!.selected
+        const rowsCount = book.chapters.length + 2
+        if (sel === 0) {
+          hideChapterIndex()
+          showBookmark()
+          return
+        }
+        if (sel === rowsCount - 1) {
+          hideChapterIndex()
+          exit()
+          return
+        }
+        const target = sel - 1
+        hideChapterIndex()
+        pos.chapter = target
+        pos.wordIndex = 0
+        sinceSave = 0
+        saveNow()
+        playing = false
+        renderWord()
+        showHud(`Ⓒ ${pos.chapter + 1}/${book.chapters.length} — side = resume`, true)
+        return
+      }
       if (bookmarkEl) {
         hideBookmark()
         return
@@ -241,6 +343,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
       if (playing) {
         pausedByClick = true
         pause()
+        showHud(`⏸ ${pos.wpm} wpm · hold = chapters`, true)
         return
       }
       if (pausedByClick && Date.now() - pausedAt < DOUBLE_CLICK_MS) {
@@ -254,6 +357,12 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
       resume()
     },
     onLongPressStart() {
+      if (chapterEl) {
+        hideChapterIndex()
+        renderWord()
+        showHud(`⏸ ${pos.wpm} wpm · hold = chapters`, true)
+        return
+      }
       if (bookmarkEl) {
         hideBookmark()
         exit()
@@ -263,14 +372,24 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
         exit()
         return
       }
-      showBookmark()
+      showChapterIndex()
     },
     onLongPressEnd() {},
     onScrollUp() {
-      adjustWpm(-10)
+      if (chapterEl) {
+        chapterNav!.up()
+        return
+      }
+      if (playing) adjustWpm(-10)
+      else jumpChapters(-1)
     },
     onScrollDown() {
-      adjustWpm(10)
+      if (chapterEl) {
+        chapterNav!.down()
+        return
+      }
+      if (playing) adjustWpm(10)
+      else jumpChapters(1)
     },
   })
 
@@ -300,6 +419,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     if (hudTimer) clearTimeout(hudTimer)
     window.removeEventListener('pagehide', flush)
     document.removeEventListener('visibilitychange', onVis)
+    hideChapterIndex()
     hideBookmark()
     saveNow()
     detach()

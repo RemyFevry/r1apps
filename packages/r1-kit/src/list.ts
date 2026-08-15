@@ -22,6 +22,7 @@ export interface ListNav {
   readonly selected: number
   up(): void
   down(): void
+  jumpTo(i: number): void
 }
 
 export function createListNav(opts: ListNavOptions): ListNav {
@@ -43,6 +44,10 @@ export function createListNav(opts: ListNavOptions): ListNav {
         state.selected++
         opts.onChange()
       }
+    },
+    jumpTo(i: number) {
+      state.selected = Math.min(Math.max(i, 0), opts.count() - 1)
+      opts.onChange()
     },
   }
 }

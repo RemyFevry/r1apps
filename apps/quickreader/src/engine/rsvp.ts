@@ -59,3 +59,24 @@ export function previousSentenceStart(words: string[], i: number): number {
   if (cur === 0) return 0
   return sentenceStart(words, cur - 1)
 }
+
+/** Word index of a chapter start, clamped. */
+export function chapterStart(chapter: { words: string[] }, wordIndex: number): number {
+  return Math.min(Math.max(wordIndex, 0), chapter.words.length - 1)
+}
+
+/** Jump chapters with position carry: same relative fraction, or ends. */
+export function jumpChapter(
+  chapters: { words: string[] }[],
+  from: { chapter: number; wordIndex: number },
+  delta: number,
+): { chapter: number; wordIndex: number } {
+  const target = Math.min(Math.max(from.chapter + delta, 0), chapters.length - 1)
+  if (target === from.chapter) {
+    return { chapter: from.chapter, wordIndex: chapterStart(chapters[from.chapter], from.wordIndex) }
+  }
+  const frac = chapters[from.chapter].words.length > 1 ? from.wordIndex / (chapters[from.chapter].words.length - 1) : 0
+  const targetWords = chapters[target].words.length
+  const wordIndex = delta > 0 ? Math.round(frac * (targetWords - 1)) : delta < 0 ? Math.round(frac * (targetWords - 1)) : 0
+  return { chapter: target, wordIndex: Math.max(0, Math.min(wordIndex, targetWords - 1)) }
+}
