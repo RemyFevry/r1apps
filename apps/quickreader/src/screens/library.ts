@@ -17,7 +17,8 @@ export function libraryScreen(ctx: Ctx): () => void {
   const brandText = document.createElement('span')
   brandText.textContent = 'QuickReader'
   const version = document.createElement('span')
-  version.textContent = ` · v${__COMMIT_SHA__.slice(0, 6)} · ${ctx.storageHealth === 'device' ? 'storage:device' : ctx.storageHealth === 'write-lost' ? 'storage:broken' : 'storage:memory'}`
+  const storageLabel = ctx.storageHealth === 'device' ? 'storage:device' : ctx.storageHealth === 'write-lost' ? 'storage:broken' : 'storage:memory'
+  version.textContent = ` · v${__COMMIT_SHA__.slice(0, 6)} · ${storageLabel} · zip:${ctx.zipMode}`
   version.style.color = 'var(--dim)'
   brand.append(brandText, version)
   const rows = document.createElement('div')

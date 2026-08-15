@@ -10,21 +10,28 @@ interface CdEntry {
   dataOffset: number
 }
 
-let nativeOk: boolean | null = null
+let modePromise: Promise<InflateMode> | null = null
 
-async function supportsDeflateRaw(): Promise<boolean> {
-  if (nativeOk !== null) return nativeOk
-  try {
-    new DecompressionStream('deflate-raw')
-    nativeOk = true
-  } catch {
-    nativeOk = false
+export type InflateMode = 'native' | 'fflate'
+
+// Resolves which decompression path this platform will take — usable before
+// any zip is opened (e.g. surfaced in diagnostics headers on-device).
+export function inflateMode(): Promise<InflateMode> {
+  if (!modePromise) {
+    modePromise = new Promise((resolve) => {
+      try {
+        new DecompressionStream('deflate-raw')
+        resolve('native')
+      } catch {
+        resolve('fflate')
+      }
+    })
   }
-  return nativeOk
+  return modePromise
 }
 
 export async function openZip(data: Uint8Array): Promise<ZipFile> {
-  if (await supportsDeflateRaw()) return openZipNative(data)
+  if ((await inflateMode()) === 'native') return openZipNative(data)
   const { unzipSync } = await import('fflate')
   const files = unzipSync(data)
   const cache = new Map<string, Uint8Array>()

@@ -1,5 +1,5 @@
 import './style.css'
-import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, probeDeviceStorage, type BookRecord, type Settings, type Storage, type StorageHealth } from 'r1-kit'
+import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, inflateMode, probeDeviceStorage, type BookRecord, type InflateMode, type Settings, type Storage, type StorageHealth } from 'r1-kit'
 import { decodeBookmark } from './ingestion/bookmark'
 import { ShelfStorage } from './ingestion/shelf'
 import { decodeTransitRef, transitRawUrl } from './ingestion/transit'
@@ -22,12 +22,14 @@ export interface Ctx {
   settings: Settings
   nav: Nav
   storageHealth: StorageHealth
+  zipMode: InflateMode
 }
 
 const app = document.getElementById('app') as HTMLElement
 const storage: Storage = new ShelfStorage(__BUNDLED_BOOKS__, __BUNDLED_BOOKS_SHA__, createStorage())
 const settings: Settings = { ...DEFAULT_SETTINGS }
 let storageHealth: StorageHealth = 'absent'
+let zipMode: InflateMode = 'fflate'
 
 let cleanup: (() => void) | null = null
 
@@ -51,7 +53,7 @@ function show(mount: (ctx: Ctx) => () => void): void {
   app.replaceChildren()
   const root = document.createElement('div')
   app.append(root)
-  cleanup = mount({ root, storage, settings, nav, storageHealth })
+  cleanup = mount({ root, storage, settings, nav, storageHealth, zipMode })
 }
 
 const nav: Nav = {
@@ -66,6 +68,7 @@ async function boot(): Promise<void> {
   const saved = await storage.loadSettings()
   Object.assign(settings, saved ?? DEFAULT_SETTINGS)
   storageHealth = await probeDeviceStorage()
+  zipMode = await inflateMode()
   const hash = /#p=([A-Za-z0-9._-]+)/.exec(location.hash)
   const bookmark = hash ? decodeBookmark(hash[1]) : null
   if (bookmark) {

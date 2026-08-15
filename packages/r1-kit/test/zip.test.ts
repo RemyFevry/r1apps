@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
-import { openZip } from '../src/zip'
+import { inflateMode, openZip } from '../src/zip'
+
+describe('inflateMode', () => {
+  test('reports the decompression path the platform will actually take', async () => {
+    expect(await inflateMode()).toBe(typeof DecompressionStream === 'undefined' ? 'fflate' : 'native')
+  })
+})
 
 describe('openZip', () => {
   test('reads deflated entries on demand via the central directory', async () => {
