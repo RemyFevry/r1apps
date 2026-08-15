@@ -9,13 +9,16 @@ export interface InstallCard {
 }
 
 export function installPayload(card: InstallCard): string {
+  // Pure-ASCII output: qrcode-generator's default byte encoder mangles
+  // non-ASCII into control bytes, making the JSON unparseable on the R1
+  // ("Not a valid creation"). \u escapes are JSON-equivalent.
   return JSON.stringify({
     title: card.title,
     url: card.url,
     description: card.description,
     iconUrl: card.iconUrl ?? '',
     themeColor: card.themeColor,
-  })
+  }).replace(/[\u0080-\uffff]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'))
 }
 
 export function renderQr(el: HTMLElement, text: string, size = 200): void {
