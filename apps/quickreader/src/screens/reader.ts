@@ -1,8 +1,8 @@
 import {
   attachInputs,
+  createRowList,
   installPayload,
   renderQr,
-  visibleWindow,
   type Settings,
   type BookRecord,
 } from 'r1-kit'
@@ -95,14 +95,37 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
   chapterK.className = 'k'
   chapterK.textContent = 'Navigate'
   chapterK.style.marginBottom = '8px'
-  const chapterList = document.createElement('div')
-  chapterList.style.width = '100%'
-  chapterList.style.overflow = 'hidden'
   const chapterHint = document.createElement('div')
   chapterHint.className = 'status'
   chapterHint.textContent = 'scroll = move · side = open · hold = cancel'
   chapterHint.style.marginTop = '8px'
-  chapterEl.append(chapterK, chapterList, chapterHint)
+
+  /** Chapter index: selection is driven externally by the overlays reducer (#14). */
+  const chapterList = createRowList({
+    count: () => book.chapters.length + 2,
+    rowHeight: ROW,
+    viewHeight: 200,
+    renderRow(row, i) {
+      const t = document.createElement('div')
+      t.className = 't'
+      const kind = indexRowKind(i, book.chapters.length + 2)
+      if (kind === 'bookmark') {
+        t.className = 't pinned'
+        t.textContent = '🔖 Bookmark here'
+      } else if (kind === 'library') {
+        t.className = 't pinned'
+        t.textContent = 'Library'
+      } else {
+        const c = book.chapters[i - 1]
+        t.textContent = `${i}. ${c.title}`
+        if (i - 1 === (pb?.snapshot().chapter ?? -1)) t.style.color = 'var(--accent)'
+      }
+      row.append(t)
+    },
+  })
+  chapterList.el.style.width = '100%'
+  chapterList.el.style.overflow = 'hidden'
+  chapterEl.append(chapterK, chapterList.el, chapterHint)
 
   const bookmarkEl = document.createElement('div')
   bookmarkEl.className = 'card-overlay'
@@ -150,34 +173,6 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
   let ov: OverlayState = initialOverlayState()
   let view: OverlayView = 'none'
 
-  function renderIndexRows(): void {
-    const rowsCount = book.chapters.length + 2
-    const cur = pb?.snapshot().chapter ?? -1
-    chapterList.replaceChildren()
-    const win = visibleWindow(ov.selected, rowsCount, ROW, 200)
-    for (let i = win.start; i < win.end; i++) {
-      const row = document.createElement('div')
-      row.className = 'row' + (i === ov.selected ? ' selected' : '')
-      row.style.height = ROW + 'px'
-      const t = document.createElement('div')
-      t.className = 't'
-      const kind = indexRowKind(i, rowsCount)
-      if (kind === 'bookmark') {
-        t.className = 't pinned'
-        t.textContent = '🔖 Bookmark here'
-      } else if (kind === 'library') {
-        t.className = 't pinned'
-        t.textContent = 'Library'
-      } else {
-        const c = book.chapters[i - 1]
-        t.textContent = `${i}. ${c.title}`
-        if (i - 1 === cur) t.style.color = 'var(--accent)'
-      }
-      row.append(t)
-      chapterList.append(row)
-    }
-  }
-
   function renderBookmark(): void {
     const s = pb?.snapshot()
     if (!s) return
@@ -210,7 +205,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
       }
       view = next
     }
-    if (next === 'chapters') renderIndexRows()
+    if (next === 'chapters') chapterList.selected = ov.selected
     if (next === 'card' && s) {
       overlayK.textContent = 'Chapter'
       overlayT.textContent = book.chapters[s.chapter].title

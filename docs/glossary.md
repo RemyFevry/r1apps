@@ -31,5 +31,6 @@ decisions make them sharp.
 - **install.html** — QR companion page per app: renders the install QR and, for
   QuickReader, book deep-link QRs; `?v=<sha>` cache-busting injected at deploy (ADR-0004).
 - **r1-kit** — the shared monorepo package: R1 input events (with keyboard fallbacks),
-  storage seam + adapters, screen/theme constants, list controller, QR-page generator,
+  storage seam + adapters, screen/theme constants, row list controller
+  (`createRowList`: navigation + windowing + DOM sync, ADR-0004), QR-page generator,
   closeWebView helper (ADR-0004).

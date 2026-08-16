@@ -1,4 +1,4 @@
-import { attachInputs, createListNav, visibleWindow } from 'r1-kit'
+import { attachInputs, createRowList } from 'r1-kit'
 import type { Ctx } from '../main'
 
 const ROW_H = 46
@@ -21,31 +21,17 @@ export function libraryScreen(ctx: Ctx): () => void {
   version.textContent = ` · v${__APP_VERSION__} · ${storageLabel} · zip:${ctx.zipMode}`
   version.style.color = 'var(--dim)'
   brand.append(brandText, version)
-  const rows = document.createElement('div')
-  rows.className = 'rows'
-  screen.append(brand, rows)
+  screen.append(brand)
   root.append(screen)
 
-  const rowCount = () => metas.length + 2
   const isBook = (i: number) => i < metas.length
 
-  const nav2 = createListNav({
-    count: rowCount,
-    onChange: () => render(),
-    onCancel: () => {
-      if (confirmDelete) {
-        confirmDelete = false
-        render()
-      }
-    },
-  })
-
-  function render(): void {
-    rows.replaceChildren()
-    const { start, end } = visibleWindow(nav2.selected, rowCount(), ROW_H, VIEW_H)
-    for (let i = start; i < end; i++) {
-      const row = document.createElement('div')
-      row.className = 'row' + (i === nav2.selected ? ' selected' : '')
+  const list = createRowList({
+    count: () => metas.length + 2,
+    className: 'rows',
+    rowHeight: ROW_H,
+    viewHeight: VIEW_H,
+    renderRow(row, i, isSelected) {
       const title = document.createElement('div')
       title.className = 't'
       const sub = document.createElement('div')
@@ -53,7 +39,7 @@ export function libraryScreen(ctx: Ctx): () => void {
       if (isBook(i)) {
         const m = metas[i]
         title.textContent = m.title
-        if (confirmDelete && i === nav2.selected) {
+        if (confirmDelete && isSelected) {
           sub.textContent = 'Delete this book? scroll to cancel'
         } else {
           const frac = fracs.get(m.id)
@@ -67,9 +53,15 @@ export function libraryScreen(ctx: Ctx): () => void {
         title.textContent = 'Settings'
       }
       row.append(title, sub)
-      rows.append(row)
-    }
-  }
+    },
+    onCancel: () => {
+      if (confirmDelete) {
+        confirmDelete = false
+        list.render()
+      }
+    },
+  })
+  screen.append(list.el)
 
   async function reload(): Promise<void> {
     metas = await storage.listBooks()
@@ -78,12 +70,12 @@ export function libraryScreen(ctx: Ctx): () => void {
       const p = await storage.loadPosition(m.id)
       if (p?.frac != null) fracs.set(m.id, p.frac)
     }
-    render()
+    list.render()
   }
 
   const detach = attachInputs({
     async onSideClick() {
-      const selected = nav2.selected
+      const selected = list.selected
       if (confirmDelete) {
         confirmDelete = false
         if (isBook(selected)) await storage.deleteBook(metas[selected].id)
@@ -100,14 +92,14 @@ export function libraryScreen(ctx: Ctx): () => void {
       }
     },
     onLongPressStart() {
-      if (isBook(nav2.selected) && !confirmDelete) {
+      if (isBook(list.selected) && !confirmDelete) {
         confirmDelete = true
-        render()
+        list.render()
       }
     },
     onLongPressEnd() {},
-    onScrollUp: nav2.up,
-    onScrollDown: nav2.down,
+    onScrollUp: list.up,
+    onScrollDown: list.down,
   })
 
   void reload()
