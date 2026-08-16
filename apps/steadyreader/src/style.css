@@ -1,0 +1,118 @@
+:root {
+  --bg: #0e0e10;
+  --accent: #fe5000;
+  --accent-dim: rgba(254, 80, 0, 0.22);
+  --text: #ffffff;
+  --dim: rgba(255, 255, 255, 0.55);
+  --card: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.15);
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { width: 240px; height: 282px; overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app { width: 240px; height: 282px; position: relative; }
+
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.brand { padding: 10px 12px 6px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+.rows { flex: 1; overflow: hidden; }
+
+.row {
+  height: 46px;
+  padding: 0 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  border-left: 2px solid transparent;
+}
+.row.selected { background: var(--accent-dim); border-left-color: var(--accent); }
+.row .t { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .t.pinned { color: var(--accent); font-weight: 600; }
+.row .s { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.reader { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.topbar { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px 0; font-size: 10px; color: var(--dim); }
+.topbar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+
+/* Wrap-and-follow reading pane (ADR-0007) */
+.pane {
+  flex: 1;
+  overflow-y: hidden;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+}
+.pane .sentence {
+  width: 100%;
+  max-height: 100%;
+  overflow-y: hidden;
+  line-height: 1.65;
+  font-weight: 500;
+}
+.pane .sentence.para { margin-bottom: 14px; }
+.pane .word { color: var(--dim); }
+.pane .word.current { color: var(--text); background: var(--accent-dim); border-radius: 3px; box-shadow: 0 0 0 2px var(--accent-dim); }
+.pane .word.current.flash { animation: wordflash 0.18s ease-out; }
+@keyframes wordflash {
+  from { background: rgba(254, 80, 0, 0.5); }
+  to { background: var(--accent-dim); }
+}
+
+.hud { height: 30px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--dim); }
+.hud.visible { color: var(--text); }
+
+.card-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 10;
+  padding: 0 20px;
+}
+.card-overlay .k { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+.card-overlay .t { font-size: 16px; text-align: center; }
+
+.form { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 12px; gap: 10px; }
+.form h2 { font-size: 13px; color: var(--accent); }
+.form textarea {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 8px;
+  resize: none;
+  outline: none;
+  line-height: 1.5;
+}
+.form .actions { display: flex; gap: 8px; }
+.btn {
+  flex: 1;
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #0e0e10; font-weight: 600; }
+.status { font-size: 11px; color: var(--dim); min-height: 15px; line-height: 1.4; }
+.hint { font-size: 11px; color: var(--dim); line-height: 1.4; }
+.value { color: var(--accent); }
