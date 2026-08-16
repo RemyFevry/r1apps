@@ -12,7 +12,9 @@ decisions make them sharp.
 - **Book** — a DRM-free EPUB fetched from a static URL. Never committed to this repo.
 - **Ingestion** — getting a Book onto the device: QR deep-link (`?add=<book-url>`) or
   typed URL, both feeding one fetch-and-store pipeline (ADR-0001).
-- **Add-Book screen** — in-app screen with a textarea for typing/pasting a book URL.
+- **Add-Book screen** — the typed-URL mount of the unified ingestion screen
+  (`screens/ingestion-screen.ts`, textarea + Add/Back); the deep-link mount starts
+  the same screen auto-ingesting with no form (#12, ADR-0001).
 - **Word stream** — the pre-extracted, flat sequence of display words (with chapter
   boundaries) that the RSVP engine consumes; what gets stored, not the raw EPUB.
 - **RSVP** — Rapid Serial Visual Presentation: words flashed one at a time.
@@ -26,7 +28,7 @@ decisions make them sharp.
 - **Pacing preset** — relaxed / standard / snappy; scales the punctuation pause
   multipliers (ADR-0002).
 - **Storage seam** — the one interface (`saveBook`/`loadBook`/`listBooks`/`deleteBook`/
-  `savePosition`/`loadPosition`/`saveSettings`/`loadSettings`) with two adapters:
+  `savePosition`/`loadPosition`/`saveSettings`/`loadSettings`/`health`) with two adapters:
   on-device (creationStorage + localStorage) and in-memory for tests/desktop (ADR-0003).
 - **install.html** — QR companion page per app: renders the install QR and, for
   QuickReader, book deep-link QRs; `?v=<sha>` cache-busting injected at deploy (ADR-0004).
@@ -72,5 +74,13 @@ decisions make them sharp.
 - **Sentence-start rule** — any entry into voiced mode speaks the current sentence
   from its start; entry into silent mode resumes at the current word (ADR-0012).
 - **r1-kit** — the shared monorepo package: R1 input events (with keyboard fallbacks),
-  storage seam + adapters, screen/theme constants, list controller, QR-page generator,
+  storage seam + adapters, screen/theme constants, row list controller
+  (`createRowList`: navigation + windowing + DOM sync, ADR-0004), QR-page generator,
   closeWebView helper (ADR-0004).
+- **R1 compatibility gate** — the CI sequence every push/PR must pass before
+  anything can deploy: `chrome103` build target, post-build static scan
+  (`r1:compat`), device-sim smoke (`r1:smoke`). Device profile constants live in
+  `r1.config.mjs`; decision record in ADR-0006.
+- **Device-sim smoke** — Playwright Chromium at 240×282 with
+  `creationStorage`/`closeWebView` mocked, driving an app through R1 hardware
+  events; fails on console errors or horizontal overflow (ADR-0006).

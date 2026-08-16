@@ -94,4 +94,11 @@ describe('ShelfStorage', () => {
     const reopened = new ShelfStorage([bundled('shelf-1')], 'sha1', new MemoryStorage())
     expect((await reopened.listBooks()).map((m) => m.id)).toEqual(['shelf-1'])
   })
+
+  test('health: books are bundle-backed while any bundled book is visible; progress is the delegate\'s (#13)', async () => {
+    const s = new ShelfStorage([bundled('shelf-1')], 'sha1', new MemoryStorage())
+    expect(s.health()).toEqual({ books: 'bundle', progress: 'session' })
+    await s.deleteBook('shelf-1')
+    expect(s.health()).toEqual({ books: 'session', progress: 'session' })
+  })
 })

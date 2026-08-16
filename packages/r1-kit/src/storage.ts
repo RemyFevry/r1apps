@@ -46,6 +46,18 @@ export interface Storage {
   loadPosition(id: string): Promise<Position | null>
   saveSettings(s: Settings): Promise<void>
   loadSettings(): Promise<Settings | null>
+  /** What this adapter actually guarantees, per kind of data (#13). */
+  health(): StorageHealth
+}
+
+/** Durability answers an adapter can give for one kind of data. */
+export type HealthKind = 'device' | 'bundle' | 'session' | 'write-lost'
+
+export interface StorageHealth {
+  /** Where book word streams durably live. */
+  books: HealthKind
+  /** Where positions + settings durably live. */
+  progress: HealthKind
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -77,8 +89,6 @@ export interface CreationStorageArea {
 
 const BOOK_PREFIX = 'book:'
 const INDEX_KEY = 'library:index'
-const POS_PREFIX = 'quickreader:pos:'
-const SETTINGS_KEY = 'quickreader:settings'
 const CS_POS_PREFIX = 'pos:'
 const CS_SETTINGS_KEY = 'settings'
 
@@ -87,12 +97,48 @@ export class DeviceStorage implements Storage {
   private memBooks = new Map<string, BookRecord>()
   private memIndex: BookMeta[] = []
 
+  /** `ns` is the app's localStorage namespace — the kit doesn't pick one (#16). */
   constructor(
     private cs: CreationStorageArea | (() => CreationStorageArea | undefined),
-  ) {}
+    private ns: string,
+  ) {
+    void this.probe()
+  }
+
+  /**
+   * Presence is live — a bridge injected after boot is picked up on the next
+   * call, which triggers the write→read-back probe then (one call of lag:
+   * books flip immediately, progress verifies on the following call).
+   */
+  health(): StorageHealth {
+    const area = this.area()
+    if (!area) return { books: 'session', progress: 'session' }
+    if (this.probeResult === null && !this.probing) void this.probe()
+    if (this.probeResult === 'write-lost') return { books: 'write-lost', progress: 'session' }
+    return { books: 'device', progress: this.probeResult === 'device' ? 'device' : 'session' }
+  }
+
+  private probeResult: StorageProbeResult | null = null
+  private probing = false
+
+  private async probe(): Promise<void> {
+    const area = this.area()
+    if (!area) return
+    this.probing = true
+    this.probeResult = await probeDeviceStorage(() => area)
+    this.probing = false
+  }
 
   private area(): CreationStorageArea | undefined {
     return typeof this.cs === 'function' ? this.cs() : this.cs
+  }
+
+  private posKey(id: string): string {
+    return `${this.ns}:pos:${id}`
+  }
+
+  private settingsKey(): string {
+    return `${this.ns}:settings`
   }
 
   private async writeIndex(metas: BookMeta[]): Promise<void> {
@@ -142,12 +188,12 @@ export class DeviceStorage implements Storage {
       this.memBooks.delete(id)
       this.memIndex = this.memIndex.filter((m) => m.id !== id)
     }
-    localStorage.removeItem(POS_PREFIX + id)
+    localStorage.removeItem(this.posKey(id))
   }
 
   async savePosition(id: string, pos: Position): Promise<void> {
     const raw = JSON.stringify(pos)
-    localStorage.setItem(POS_PREFIX + id, raw)
+    localStorage.setItem(this.posKey(id), raw)
     // Mirror to creationStorage: on firmware where localStorage does not
     // survive a webview restart, this is the durable copy. Small records
     // (the earlier failure mode was whole-book writes).
@@ -156,7 +202,7 @@ export class DeviceStorage implements Storage {
   }
 
   async loadPosition(id: string): Promise<Position | null> {
-    const raw = localStorage.getItem(POS_PREFIX + id)
+    const raw = localStorage.getItem(this.posKey(id))
     if (raw) {
       try {
         return JSON.parse(raw) as Position
@@ -178,13 +224,13 @@ export class DeviceStorage implements Storage {
 
   async saveSettings(s: Settings): Promise<void> {
     const raw = JSON.stringify(s)
-    localStorage.setItem(SETTINGS_KEY, raw)
+    localStorage.setItem(this.settingsKey(), raw)
     const cs = this.area()
     if (cs) void cs.setItem(CS_SETTINGS_KEY, toB64(raw)).catch(() => {})
   }
 
   async loadSettings(): Promise<Settings | null> {
-    const raw = localStorage.getItem(SETTINGS_KEY)
+    const raw = localStorage.getItem(this.settingsKey())
     if (raw) {
       try {
         return JSON.parse(raw) as Settings
@@ -244,6 +290,10 @@ export class MemoryStorage implements Storage {
   async loadSettings(): Promise<Settings | null> {
     return this.settings
   }
+
+  health(): StorageHealth {
+    return { books: 'session', progress: 'session' }
+  }
 }
 
 function getCreationStorage(): CreationStorageArea | undefined {
@@ -254,11 +304,13 @@ export function hasCreationStorage(): boolean {
   return getCreationStorage() != null
 }
 
-export type StorageHealth = 'device' | 'write-lost' | 'absent'
+export type StorageProbeResult = 'device' | 'write-lost' | 'absent'
 
 /** Write→read-back probe: a fire-and-forget bridge reports write-lost. */
-export async function probeDeviceStorage(): Promise<StorageHealth> {
-  const area = getCreationStorage()
+export async function probeDeviceStorage(
+  getArea: () => CreationStorageArea | undefined = getCreationStorage,
+): Promise<StorageProbeResult> {
+  const area = getArea()
   if (!area) return 'absent'
   try {
     const token = 'probe-' + Date.now().toString(36)
@@ -271,6 +323,6 @@ export async function probeDeviceStorage(): Promise<StorageHealth> {
   }
 }
 
-export function createStorage(): Storage {
-  return new DeviceStorage(getCreationStorage)
+export function createStorage(ns: string): Storage {
+  return new DeviceStorage(getCreationStorage, ns)
 }

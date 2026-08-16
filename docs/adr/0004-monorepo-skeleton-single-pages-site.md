@@ -43,8 +43,11 @@ pnpm-workspace.yaml
   Pages artifact preserving `/<app>/` paths → each app at
   `remyfevry.github.io/r1apps/<app>/`.
 - Each app sets Vite `base: '/r1apps/<app>/'`.
-- Cache-busting: the workflow injects the commit SHA as `?v=<sha>` into the app URL
-  used by install.html QRs — rescan the QR to pick up a new version.
+- Cache-busting: builds inject a build id as `?v=<build id>` into the app URL
+  used by install.html QRs — rescan the QR to pick up a new version. (2026-08-16:
+  the constant was renamed `__COMMIT_SHA__` → `__BUILD_ID__` once it stopped
+  holding a SHA — shelf builds stamp the semver via bookshelf, CI stamps the
+  commit SHA.)
 
 ### New apps
 

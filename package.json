@@ -8,9 +8,13 @@
     "host-book": "node scripts/host-book.mjs",
     "bookshelf": "tsx scripts/bookshelf.mjs",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "r1:compat": "node scripts/check-r1-compat.mjs",
+    "r1:smoke": "playwright test",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm r1:compat && pnpm r1:smoke"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.0",
     "happy-dom": "^15.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"

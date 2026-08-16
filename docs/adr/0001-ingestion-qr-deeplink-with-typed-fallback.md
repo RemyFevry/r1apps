@@ -57,7 +57,7 @@ in the QR (`?add=<encoded-url>`, ~180-char install URL) produced on-device
 404s — the R1 truncates/mangles long install URLs (the raw URL itself serves
 200 under every UA). Deep-links now carry a compact base64url transit code
 (`?b=<account|repo|file>`), keeping the install URL under ~110 chars; the app
-reconstructs the raw URL (apps/quickreader/src/ingestion/transit.ts). Full
+reconstructs the raw URL (apps/quickreader/src/deeplink/transit.ts (moved out of ingestion/ 2026-08-16)). Full
 `?add=` URLs still work for arbitrary hosts. Ingest errors now display the
 exact URL that failed.
 

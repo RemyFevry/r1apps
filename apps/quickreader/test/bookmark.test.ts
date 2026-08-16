@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { bookmarkUrl, decodeBookmark, encodeBookmark } from '../src/ingestion/bookmark'
+import { bookmarkUrl, decodeBookmark, encodeBookmark } from '../src/deeplink/bookmark'
 
 describe('bookmark', () => {
   test('round-trips', () => {

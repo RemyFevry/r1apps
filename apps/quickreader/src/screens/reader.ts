@@ -1,20 +1,31 @@
 import {
   attachInputs,
-  createListNav,
+  createRowList,
   installPayload,
   renderQr,
-  visibleWindow,
+  THEME,
   type Settings,
   type BookRecord,
 } from 'r1-kit'
 import { createPlayback, type Playback, type PlaybackHudKind, type PlaybackSnapshot } from '../engine/playback'
 import { orpIndex } from '../engine/rsvp'
 import { formatDuration } from '../engine/time'
-import { bookmarkUrl } from '../ingestion/bookmark'
+import { bookmarkUrl } from '../deeplink/bookmark'
+import {
+  indexRowKind,
+  initialOverlayState,
+  overlayView,
+  reduceOverlay,
+  type OverlayEffect,
+  type OverlayState,
+  type OverlayView,
+  type ReaderInput,
+} from './overlays'
 import type { Ctx } from '../main'
 
 const FONT_PX: Record<Settings['font'], number> = { S: 20, M: 24, L: 30 }
 const FIT_CHARS = 13
+const ROW = 36
 
 /** Semantic HUD kinds → text + stickiness. All wording lives here, not in the engine. */
 function hudText(book: BookRecord, kind: PlaybackHudKind, s: PlaybackSnapshot): [string, boolean] {
@@ -34,8 +45,8 @@ function hudText(book: BookRecord, kind: PlaybackHudKind, s: PlaybackSnapshot): 
   }
 }
 
-export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
-  const { root, storage, settings, nav } = ctx
+export function readerScreen(ctx: Ctx, book: BookRecord, settings: Settings): () => void {
+  const { root, storage, nav } = ctx
 
   let pb: Playback | null = null
   let unmounted = false
@@ -75,7 +86,63 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
   overlay.append(overlayK, overlayT)
 
   screen.append(topbar, stage, hud, overlay)
-  root.append(screen)
+
+  const chapterEl = document.createElement('div')
+  chapterEl.className = 'card-overlay'
+  chapterEl.style.justifyContent = 'flex-start'
+  chapterEl.style.paddingTop = '16px'
+  chapterEl.style.display = 'none'
+  const chapterK = document.createElement('div')
+  chapterK.className = 'k'
+  chapterK.textContent = 'Navigate'
+  chapterK.style.marginBottom = '8px'
+  const chapterHint = document.createElement('div')
+  chapterHint.className = 'status'
+  chapterHint.textContent = 'scroll = move · side = open · hold = cancel'
+  chapterHint.style.marginTop = '8px'
+
+  /** Chapter index: selection is driven externally by the overlays reducer (#14). */
+  const chapterList = createRowList({
+    count: () => book.chapters.length + 2,
+    rowHeight: ROW,
+    viewHeight: 200,
+    renderRow(row, i) {
+      const t = document.createElement('div')
+      t.className = 't'
+      const kind = indexRowKind(i, book.chapters.length + 2)
+      if (kind === 'bookmark') {
+        t.className = 't pinned'
+        t.textContent = '🔖 Bookmark here'
+      } else if (kind === 'library') {
+        t.className = 't pinned'
+        t.textContent = 'Library'
+      } else {
+        const c = book.chapters[i - 1]
+        t.textContent = `${i}. ${c.title}`
+        if (i - 1 === (pb?.snapshot().chapter ?? -1)) t.style.color = 'var(--accent)'
+      }
+      row.append(t)
+    },
+  })
+  chapterList.el.style.width = '100%'
+  chapterList.el.style.overflow = 'hidden'
+  chapterEl.append(chapterK, chapterList.el, chapterHint)
+
+  const bookmarkEl = document.createElement('div')
+  bookmarkEl.className = 'card-overlay'
+  bookmarkEl.style.display = 'none'
+  const bookmarkK = document.createElement('div')
+  bookmarkK.className = 'k'
+  bookmarkK.textContent = 'Bookmark — scan to resume here'
+  const qrBox = document.createElement('div')
+  qrBox.style.background = '#fff'
+  qrBox.style.padding = '6px'
+  qrBox.style.borderRadius = '8px'
+  const bookmarkHint = document.createElement('div')
+  bookmarkHint.className = 'status'
+  bookmarkEl.append(bookmarkK, qrBox, bookmarkHint)
+
+  root.append(screen, chapterEl, bookmarkEl)
 
   function renderWord(s: PlaybackSnapshot): void {
     const w = book.chapters[s.chapter].words[s.wordIndex]
@@ -104,12 +171,47 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     if (!sticky) hudTimer = setTimeout(() => hud.classList.remove('visible'), 900)
   }
 
-  function onStatus(s: PlaybackSnapshot): void {
-    if (s.status === 'cardPaused' || s.status === 'cardPlaying') {
+  let ov: OverlayState = initialOverlayState()
+  let view: OverlayView = 'none'
+
+  function renderBookmark(): void {
+    const s = pb?.snapshot()
+    if (!s) return
+    bookmarkHint.textContent = `ch ${s.chapter + 1} · word ${s.wordIndex} · ${s.wpm} wpm — side = back, hold = library`
+    const base = location.href.split(/[?#]/)[0]
+    renderQr(
+      qrBox,
+      installPayload({
+        title: 'QuickReader bookmark',
+        url: bookmarkUrl(base, __BUILD_ID__, { id: book.id, chapter: s.chapter, wordIndex: s.wordIndex, wpm: s.wpm }),
+        description: 'Resume reading',
+        themeColor: THEME.accent,
+      }),
+      180,
+    )
+  }
+
+  /** The one DOM sync: overlay visibility is a function of (status, overlay state). */
+  function sync(): void {
+    if (unmounted) return
+    const s = pb?.snapshot()
+    const next = overlayView(s?.status ?? 'paused', ov)
+    if (next !== view) {
+      if (view === 'chapters') chapterEl.style.display = 'none'
+      if (view === 'bookmark') bookmarkEl.style.display = 'none'
+      if (next === 'chapters') chapterEl.style.display = ''
+      if (next === 'bookmark') {
+        renderBookmark()
+        bookmarkEl.style.display = ''
+      }
+      view = next
+    }
+    if (next === 'chapters') chapterList.selected = ov.selected
+    if (next === 'card' && s) {
       overlayK.textContent = 'Chapter'
       overlayT.textContent = book.chapters[s.chapter].title
       overlay.style.display = 'flex'
-    } else if (s.status === 'finished') {
+    } else if (next === 'end' && s) {
       overlayK.textContent = 'The End'
       overlayT.textContent = book.title
       overlay.style.display = 'flex'
@@ -118,122 +220,47 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     }
   }
 
-  /** Scroll/long-press route by liveness — the old implicit `playing` boolean. */
-  function live(): boolean {
-    const st = pb?.snapshot().status
-    return st === 'playing' || st === 'cardPlaying'
-  }
-
   function exit(): void {
     pb?.flush()
     nav.library()
   }
 
-  let bookmarkEl: HTMLElement | null = null
-  let chapterEl: HTMLElement | null = null
-  let chapterNav: ReturnType<typeof createListNav> | null = null
-
-  const ROW = 36
-
-  function showChapterIndex(): void {
-    hideChapterIndex()
-    if (bookmarkEl) hideBookmark()
-    const rowsCount = () => book.chapters.length + 2
-    const isBookmarkRow = (i: number) => i === 0
-    const isLibraryRow = (i: number) => i === rowsCount() - 1
-    const chapterRow = (i: number) => i - 1
-
-    const el = document.createElement('div')
-    el.className = 'card-overlay'
-    el.style.justifyContent = 'flex-start'
-    el.style.paddingTop = '16px'
-    const k = document.createElement('div')
-    k.className = 'k'
-    k.textContent = 'Navigate'
-    k.style.marginBottom = '8px'
-    const list = document.createElement('div')
-    list.style.width = '100%'
-    list.style.overflow = 'hidden'
-    const hint = document.createElement('div')
-    hint.className = 'status'
-    hint.textContent = 'scroll = move · side = open · hold = cancel'
-    hint.style.marginTop = '8px'
-    el.append(k, list, hint)
-
-    chapterNav = createListNav({
-      count: rowsCount,
-      onChange: () => {
-        list.replaceChildren()
-        const win = visibleWindow(chapterNav!.selected, rowsCount(), ROW, 200)
-        for (let i = win.start; i < win.end; i++) {
-          const row = document.createElement('div')
-          row.className = 'row' + (i === chapterNav!.selected ? ' selected' : '')
-          row.style.height = ROW + 'px'
-          const t = document.createElement('div')
-          t.className = 't'
-          if (isBookmarkRow(i)) {
-            t.className = 't pinned'
-            t.textContent = '🔖 Bookmark here'
-          } else if (isLibraryRow(i)) {
-            t.className = 't pinned'
-            t.textContent = 'Library'
-          } else {
-            const c = book.chapters[chapterRow(i)]
-            t.textContent = `${chapterRow(i) + 1}. ${c.title}`
-            if (chapterRow(i) === pb?.snapshot().chapter) t.style.color = 'var(--accent)'
-          }
-          row.append(t)
-          list.append(row)
-        }
-      },
-    })
-    chapterNav.jumpTo((pb?.snapshot().chapter ?? 0) + 1)
-    root.append(el)
-    chapterEl = el
+  function runEffect(e: OverlayEffect): void {
+    switch (e.t) {
+      case 'click':
+        pb?.click()
+        break
+      case 'wpm':
+        pb?.setWpm(e.delta)
+        break
+      case 'jump':
+        pb?.jump(e.delta)
+        break
+      case 'seekChapter':
+        pb?.seekChapter(e.chapter)
+        break
+      case 'flush':
+        pb?.flush()
+        break
+      case 'exit':
+        exit()
+        break
+      case 'hint': {
+        const s = pb?.snapshot()
+        if (s) renderWord(s)
+        showHud(`⏸ ${s?.wpm ?? settings.defaultWpm} wpm · hold = chapters`, true)
+        break
+      }
+    }
   }
 
-  function hideChapterIndex(): void {
-    chapterEl?.remove()
-    chapterEl = null
-    chapterNav = null
-  }
-
-  function showBookmark(): void {
-    hideBookmark()
-    pb?.flush()
-    const s = pb?.snapshot()
-    if (!s) return
-    const el = document.createElement('div')
-    el.className = 'card-overlay'
-    const k = document.createElement('div')
-    k.className = 'k'
-    k.textContent = 'Bookmark — scan to resume here'
-    const qrBox = document.createElement('div')
-    qrBox.style.background = '#fff'
-    qrBox.style.padding = '6px'
-    qrBox.style.borderRadius = '8px'
-    const hint = document.createElement('div')
-    hint.className = 'status'
-    hint.textContent = `ch ${s.chapter + 1} · word ${s.wordIndex} · ${s.wpm} wpm — side = back, hold = library`
-    el.append(k, qrBox, hint)
-    const base = location.href.split(/[?#]/)[0]
-    renderQr(
-      qrBox,
-      installPayload({
-        title: 'QuickReader bookmark',
-        url: bookmarkUrl(base, __COMMIT_SHA__, { id: book.id, chapter: s.chapter, wordIndex: s.wordIndex, wpm: s.wpm }),
-        description: 'Resume reading',
-        themeColor: '#FE5000',
-      }),
-      180,
-    )
-    root.append(el)
-    bookmarkEl = el
-  }
-
-  function hideBookmark(): void {
-    bookmarkEl?.remove()
-    bookmarkEl = null
+  /** Inputs before playback is ready are no-ops (nothing to route to yet). */
+  function dispatch(input: ReaderInput): void {
+    if (!pb) return
+    const r = reduceOverlay(ov, pb.snapshot(), input, book.chapters.length + 2)
+    ov = r.state
+    for (const e of r.effects) runEffect(e)
+    sync()
   }
 
   const flush = () => pb?.flush()
@@ -244,66 +271,11 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
   document.addEventListener('visibilitychange', onVis)
 
   const detach = attachInputs({
-    onSideClick() {
-      if (chapterEl) {
-        const sel = chapterNav!.selected
-        const rowsCount = book.chapters.length + 2
-        if (sel === 0) {
-          hideChapterIndex()
-          showBookmark()
-          return
-        }
-        if (sel === rowsCount - 1) {
-          hideChapterIndex()
-          exit()
-          return
-        }
-        hideChapterIndex()
-        pb?.seekChapter(sel - 1)
-        return
-      }
-      if (bookmarkEl) {
-        hideBookmark()
-        return
-      }
-      pb?.click()
-    },
-    onLongPressStart() {
-      if (chapterEl) {
-        hideChapterIndex()
-        const s = pb?.snapshot()
-        if (s) renderWord(s)
-        showHud(`⏸ ${s?.wpm ?? settings.defaultWpm} wpm · hold = chapters`, true)
-        return
-      }
-      if (bookmarkEl) {
-        hideBookmark()
-        exit()
-        return
-      }
-      if (live()) {
-        exit()
-        return
-      }
-      showChapterIndex()
-    },
+    onSideClick: () => dispatch('sideClick'),
+    onLongPressStart: () => dispatch('longPress'),
     onLongPressEnd() {},
-    onScrollUp() {
-      if (chapterEl) {
-        chapterNav!.up()
-        return
-      }
-      if (live()) pb?.setWpm(-10)
-      else pb?.jump(-1)
-    },
-    onScrollDown() {
-      if (chapterEl) {
-        chapterNav!.down()
-        return
-      }
-      if (live()) pb?.setWpm(10)
-      else pb?.jump(1)
-    },
+    onScrollUp: () => dispatch('scrollUp'),
+    onScrollDown: () => dispatch('scrollDown'),
   })
 
   void (async () => {
@@ -318,7 +290,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
       pacing: settings.pacing,
       events: {
         onWord: renderWord,
-        onStatus,
+        onStatus: sync,
         onHud: (kind, s) => showHud(...hudText(book, kind, s)),
         onExit: () => nav.library(),
       },
@@ -331,6 +303,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
         cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       },
     })
+    sync()
   })()
 
   return () => {
@@ -339,8 +312,8 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     if (hudTimer) clearTimeout(hudTimer)
     window.removeEventListener('pagehide', flush)
     document.removeEventListener('visibilitychange', onVis)
-    hideChapterIndex()
-    hideBookmark()
+    chapterEl.remove()
+    bookmarkEl.remove()
     detach()
   }
 }

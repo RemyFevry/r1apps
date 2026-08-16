@@ -1,4 +1,4 @@
-import { FONT_ORDER, PACING_ORDER, attachInputs, createListNav } from 'r1-kit'
+import { FONT_ORDER, PACING_ORDER, attachInputs, createRowList, type Settings } from 'r1-kit'
 import type { Ctx } from '../main'
 
 interface Row {
@@ -7,12 +7,15 @@ interface Row {
   act(): void
 }
 
+const ROW_H = 46
+
 function cycle<T>(order: T[], current: T): T {
   return order[(order.indexOf(current) + 1) % order.length]
 }
 
-export function settingsScreen(ctx: Ctx): () => void {
-  const { root, storage, settings } = ctx
+export function settingsScreen(ctx: Ctx, initial: Settings): () => void {
+  const { root, storage } = ctx
+  const settings: Settings = { ...initial }
 
   const rows: Row[] = [
     {
@@ -50,27 +53,14 @@ export function settingsScreen(ctx: Ctx): () => void {
   const brand = document.createElement('div')
   brand.className = 'brand'
   brand.textContent = 'Settings'
-  const list = document.createElement('div')
-  list.className = 'rows'
-  screen.append(brand, list)
+  screen.append(brand)
   root.append(screen)
 
-  const total = () => rows.length + 1
-
-  const nav = createListNav({
-    count: total,
-    onChange: () => render(),
-  })
-
-  function persist(): void {
-    void storage.saveSettings({ ...settings }).catch(() => {})
-  }
-
-  function render(): void {
-    list.replaceChildren()
-    for (let i = 0; i < total(); i++) {
-      const row = document.createElement('div')
-      row.className = 'row' + (i === nav.selected ? ' selected' : '')
+  const list = createRowList({
+    count: () => rows.length + 1,
+    className: 'rows',
+    rowHeight: ROW_H,
+    renderRow(row, i) {
       const t = document.createElement('div')
       const s = document.createElement('div')
       s.className = 's'
@@ -83,8 +73,12 @@ export function settingsScreen(ctx: Ctx): () => void {
         t.textContent = 'Done'
       }
       row.append(t, s)
-      list.append(row)
-    }
+    },
+  })
+  screen.append(list.el)
+
+  function persist(): void {
+    void storage.saveSettings({ ...settings }).catch(() => {})
   }
 
   function done(): void {
@@ -94,10 +88,10 @@ export function settingsScreen(ctx: Ctx): () => void {
 
   const detach = attachInputs({
     onSideClick() {
-      if (nav.selected < rows.length) {
-        rows[nav.selected].act()
+      if (list.selected < rows.length) {
+        rows[list.selected].act()
         persist()
-        render()
+        list.render()
       } else {
         done()
       }
@@ -106,10 +100,9 @@ export function settingsScreen(ctx: Ctx): () => void {
       done()
     },
     onLongPressEnd() {},
-    onScrollUp: nav.up,
-    onScrollDown: nav.down,
+    onScrollUp: list.up,
+    onScrollDown: list.down,
   })
 
-  render()
   return detach
 }
