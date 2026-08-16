@@ -27,7 +27,7 @@ const BOOKS_DIR = join(ROOT, 'apps/quickreader/books')
 const APP = 'quickreader'
 const SHELF_REPO_OWNER = 'RemyFevry'
 const SHELF_REPO = `${SHELF_REPO_OWNER}/r1-shelf`
-const SHELF_URL = `https://${SHELF_REPO_OWNER}.github.io/r1-shelf/`
+const SHELF_URL = `https://${SHELF_REPO_OWNER.toLowerCase()}.github.io/r1-shelf/`
 const SHELF_BASE = '/r1-shelf/'
 
 function die(msg) {
