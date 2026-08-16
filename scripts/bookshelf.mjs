@@ -19,10 +19,11 @@
 // docs/adr/0001 (amendments).
 
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { Window } from 'happy-dom'
+import { bumpVersion, extractEpubFile, parseSemver, shippedVersion, slugify, smallHash, stageShelfSite } from './shelf.ts'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const BOOKS_DIR = join(ROOT, 'apps/quickreader/books')
@@ -31,7 +32,6 @@ const APP_PKG = join(ROOT, 'apps', APP, 'package.json')
 const SHELF_REPO_OWNER = 'RemyFevry'
 const SHELF_REPO = `${SHELF_REPO_OWNER}/r1-shelf`
 const SHELF_URL = `https://${SHELF_REPO_OWNER.toLowerCase()}.github.io/r1-shelf/`
-const SHELF_BASE = '/r1-shelf/'
 
 function die(msg) {
   console.error(msg)
@@ -42,32 +42,19 @@ function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opts }).trim()
 }
 
-function slugify(name) {
-  return name
-    .replace(/\.epub$/i, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48)
-}
-
-function smallHash(s) {
-  let h = 5381
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0
-  return h.toString(36)
-}
-
 function appVersion() {
   const v = JSON.parse(readFileSync(APP_PKG, 'utf8')).version
-  if (!/^\d+\.\d+\.\d+$/.test(v)) die(`apps/quickreader/package.json version is not semver: ${v}`)
+  try {
+    parseSemver(v)
+  } catch {
+    die(`apps/quickreader/package.json version is not semver: ${v}`)
+  }
   return v
 }
 
-async function extract(file) {
+function extract(file) {
   const win = new Window()
-  globalThis.DOMParser = win.DOMParser
-  const { extractEpub } = await import('../apps/quickreader/src/ingestion/epub.ts')
-  return extractEpub(new Uint8Array(readFileSync(file)))
+  return extractEpubFile(file, win.DOMParser)
 }
 
 const SHELF_WORKFLOW = `name: deploy
@@ -159,12 +146,13 @@ async function main() {
   if (cmd === 'bump') {
     const part = args[0]
     if (!['major', 'minor', 'patch'].includes(part)) die('usage: pnpm bookshelf bump <major|minor|patch>')
-    const [major, minor, patch] = appVersion().split('.').map(Number)
-    const next = part === 'major' ? `${major + 1}.0.0` : part === 'minor' ? `${major}.${minor + 1}.0` : `${major}.${minor}.${patch + 1}`
-    const pkg = JSON.parse(readFileSync(APP_PKG, 'utf8'))
-    pkg.version = next
-    writeFileSync(APP_PKG, JSON.stringify(pkg, null, 2) + '\n')
-    console.log(`bumped ${part}: v${[major, minor, patch].join('.')} → v${next} (apps/quickreader/package.json — commit it with your change)`)
+    let from, to
+    try {
+      ;({ from, to } = bumpVersion(APP_PKG, part))
+    } catch (e) {
+      die(`apps/quickreader/package.json ${e?.message ?? String(e)}`)
+    }
+    console.log(`bumped ${part}: v${from} → v${to} (apps/quickreader/package.json — commit it with your change)`)
     return
   }
 
@@ -180,20 +168,7 @@ async function main() {
     let created = false
     try {
       // Site: only the app + shelf companion page, rebased onto the shelf path.
-      cpSync(dist + '/', site + '/', { recursive: true })
-      rmSync(join(site, 'install.html'))
-      rmSync(join(site, 'index.html'))
-      const appHtml = readFileSync(join(dist, 'index.html'), 'utf8')
-      const shelfHtml = appHtml
-        .replaceAll('/r1apps/quickreader/', SHELF_BASE)
-        .replace('<title>QuickReader</title>', `<title>QuickReader shelf v${ver}</title>`)
-      writeFileSync(join(site, 'app.html'), shelfHtml)
-      const companion = readFileSync(join(site, 'shelf-install.html'), 'utf8').replaceAll(
-        '/r1apps/quickreader/',
-        SHELF_BASE,
-      )
-      writeFileSync(join(site, 'install.html'), companion)
-      rmSync(join(site, 'shelf-install.html'))
+      stageShelfSite(dist, site, ver)
 
       let exists = true
       try {
@@ -211,7 +186,7 @@ async function main() {
       if (!created) {
         // Prior version artifacts carry forward: every v/<ver>/ ever synced stays served.
         run('git', ['pull', '--ff-only', 'origin', 'main'], { cwd: stage })
-        if (existsSync(join(stage, 'v', ver))) {
+        if (shippedVersion(stage, ver)) {
           die(`v/${ver}/ is already shipped and immutable — bump first: pnpm bookshelf bump <major|minor|patch>`)
         }
         if (!existsSync(join(stage, 'v'))) {
