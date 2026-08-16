@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { APP_BASE } from './app.config'
+import { R1_BUILD_TARGET } from '../../r1.config.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const booksDir = join(here, 'books')
@@ -36,6 +37,7 @@ export default defineConfig({
     __BUNDLED_BOOKS_SHA__: JSON.stringify(smallSha(bundledSha)),
   },
   build: {
+    target: R1_BUILD_TARGET,
     outDir: 'dist',
     rollupOptions: {
       input: {
