@@ -79,8 +79,9 @@ fallbacks. `scripts/serve-r1-dist.mjs` serves every dist at its deployed
   artifact built by verify** — there is no second build, so the bytes deployed
   are the bytes the gate verified.
 - Branch protection on `main`: `verify` required, `enforce_admins`, branch
-  up-to-date. (Pending owner action — `remyf-agent` has write, protection needs
-  an admin token.)
+  up-to-date, no force pushes or deletions, conversation resolution required —
+  set 2026-08-16 by the owner (RemyFevry); every change to main, the owner's
+  included, now merges only after the gate passes.
 
 ## Consequences
 
