@@ -1,0 +1,189 @@
+import { normalizeText, wordsOf, type DocChapter } from './document'
+import { openZip, type ZipFile } from './zip'
+
+export interface ExtractedDocument {
+  title: string
+  author: string
+  chapters: DocChapter[]
+  wordCount: number
+}
+
+export class NotEpubError extends Error {}
+
+const BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,dd,td,pre'
+
+export async function extractEpubDocument(data: Uint8Array): Promise<ExtractedDocument> {
+  let zip: ZipFile
+  try {
+    zip = await openZip(data)
+  } catch (e) {
+    throw new NotEpubError(e instanceof Error ? e.message : 'unreadable zip')
+  }
+  const dec = new TextDecoder('utf-8')
+  const text = async (name: string): Promise<string | null> => {
+    if (!zip.has(name)) return null
+    try {
+      return dec.decode(await zip.read(name))
+    } catch {
+      throw new NotEpubError('failed to inflate ' + name)
+    }
+  }
+
+  const containerRaw = await text('META-INF/container.xml')
+  if (!containerRaw) throw new NotEpubError('missing META-INF/container.xml')
+  const container = parseXml(containerRaw)
+  const rootfile = container.getElementsByTagName('rootfile')[0]?.getAttribute('full-path')
+  if (!rootfile) throw new NotEpubError('missing rootfile in container.xml')
+  const opfDir = dirOf(rootfile)
+  const opfRaw = await text(rootfile)
+  if (!opfRaw) throw new NotEpubError('missing package document ' + rootfile)
+  const opf = parseXml(opfRaw)
+
+  let title = ''
+  let author = ''
+  const metadata = opf.getElementsByTagName('metadata')[0]
+  if (metadata) {
+    for (const el of Array.from(metadata.getElementsByTagName('*'))) {
+      const name = localNameOf(el)
+      if (!title && name === 'title') title = (el.textContent ?? '').trim()
+      else if (!author && name === 'creator') author = (el.textContent ?? '').trim()
+    }
+  }
+
+  const items = new Map<string, { href: string; mediaType: string; properties: string }>()
+  const manifest = opf.getElementsByTagName('manifest')[0]
+  if (manifest) {
+    for (const it of Array.from(manifest.getElementsByTagName('item'))) {
+      const id = it.getAttribute('id') ?? ''
+      const href = it.getAttribute('href') ?? ''
+      items.set(id, {
+        href: resolvePath(opfDir, stripFragment(href)),
+        mediaType: it.getAttribute('media-type') ?? '',
+        properties: it.getAttribute('properties') ?? '',
+      })
+    }
+  }
+
+  const spineEl = opf.getElementsByTagName('spine')[0]
+  const hrefs: string[] = []
+  if (spineEl) {
+    for (const ir of Array.from(spineEl.getElementsByTagName('itemref'))) {
+      if (ir.getAttribute('linear') === 'no') continue
+      const it = items.get(ir.getAttribute('idref') ?? '')
+      if (it && /xhtml|html/.test(it.mediaType)) hrefs.push(it.href)
+    }
+  }
+  if (!hrefs.length) throw new NotEpubError('no spine documents')
+
+  const titles = await readTocTitles(text, items, spineEl)
+
+  const chapters: DocChapter[] = []
+  let wordCount = 0
+  for (const href of hrefs) {
+    const raw = await text(href)
+    if (raw == null) continue
+    const doc = parseChapterDoc(raw)
+    const paragraphs = extractParagraphs(doc)
+    if (!paragraphs.length) continue
+    wordCount += paragraphs.reduce((a, p) => a + wordsOf(p).length, 0)
+    chapters.push({ title: titles.get(href) ?? `Chapter ${chapters.length + 1}`, paragraphs })
+  }
+  if (!chapters.length) throw new NotEpubError('no readable text in spine documents')
+
+  return { title: title || 'Untitled', author, chapters, wordCount }
+}
+
+function localNameOf(el: Element): string {
+  const n = el.localName ?? el.nodeName
+  const i = n.indexOf(':')
+  return i < 0 ? n : n.slice(i + 1)
+}
+
+function parseXml(xml: string): Document {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  if (doc.getElementsByTagName('parsererror').length) throw new NotEpubError('malformed xml')
+  return doc
+}
+
+function parseChapterDoc(raw: string): Document {
+  const doc = new DOMParser().parseFromString(raw, 'application/xhtml+xml')
+  if (doc.getElementsByTagName('parsererror').length || !doc.getElementsByTagName('body').length) {
+    return new DOMParser().parseFromString(raw, 'text/html')
+  }
+  return doc
+}
+
+function extractParagraphs(doc: Document): string[] {
+  const body = doc.getElementsByTagName('body')[0] ?? doc.documentElement
+  const all = Array.from(body.querySelectorAll(BLOCK_SELECTOR))
+  const leafBlocks = all.filter((el) => !el.querySelector(BLOCK_SELECTOR))
+  const blocks = leafBlocks.length ? leafBlocks : [body]
+  const paragraphs: string[] = []
+  for (const block of blocks) {
+    const p = normalizeText(block.textContent ?? '')
+    if (p) paragraphs.push(p)
+  }
+  return paragraphs
+}
+
+async function readTocTitles(
+  text: (name: string) => Promise<string | null>,
+  items: Map<string, { href: string; mediaType: string; properties: string }>,
+  spineEl: Element | undefined,
+): Promise<Map<string, string>> {
+  const titles = new Map<string, string>()
+  const put = (href: string, label: string) => {
+    const t = label.replace(/\s+/g, ' ').trim()
+    if (t && !titles.has(href)) titles.set(href, t)
+  }
+  const parser = new DOMParser()
+  for (const it of items.values()) {
+    if (!it.properties.split(/\s+/).includes('nav')) continue
+    const raw = await text(it.href)
+    if (!raw) continue
+    const doc = parser.parseFromString(raw, 'text/html')
+    const base = dirOf(it.href)
+    for (const a of Array.from(doc.getElementsByTagName('a'))) {
+      const href = a.getAttribute('href')
+      if (!href) continue
+      put(resolvePath(base, stripFragment(href)), a.textContent ?? '')
+    }
+  }
+  const tocId = spineEl?.getAttribute('toc')
+  const ncx = tocId ? items.get(tocId) : undefined
+  if (ncx) {
+    const raw = await text(ncx.href)
+    if (raw) {
+      const doc = parser.parseFromString(raw, 'application/xml')
+      const base = dirOf(ncx.href)
+      for (const np of Array.from(doc.getElementsByTagName('navPoint'))) {
+        const content = np.getElementsByTagName('content')[0]
+        const label = np.getElementsByTagName('text')[0]
+        const src = content?.getAttribute('src')
+        if (content && label && src) put(resolvePath(base, stripFragment(src)), label.textContent ?? '')
+      }
+    }
+  }
+  return titles
+}
+
+function dirOf(path: string): string {
+  const i = path.lastIndexOf('/')
+  return i < 0 ? '' : path.slice(0, i + 1)
+}
+
+function stripFragment(href: string): string {
+  const i = href.indexOf('#')
+  return i < 0 ? href : href.slice(0, i)
+}
+
+function resolvePath(dir: string, href: string): string {
+  if (/^[a-z]+:\/\//i.test(href) || href.startsWith('/')) return href
+  const out: string[] = []
+  for (const part of (dir + href).split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') out.pop()
+    else out.push(part)
+  }
+  return out.join('/')
+}
