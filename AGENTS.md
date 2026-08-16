@@ -20,9 +20,11 @@ pnpm verify          # typecheck + test + build + r1:compat + r1:smoke
   (`index.html` must be `width=240, user-scalable=no`), no external resources,
   JS bundle budget.
 - `pnpm r1:smoke` — Playwright Chromium at 240×282 with `creationStorage` /
-  `closeWebView` mocked, driving each app through R1 hardware events
-  (`sideClick`, `scrollUp/Down`, `longPressStart/End`); fails on any console
-  error or horizontal overflow.
+  `closeWebView` mocked and post-Chrome-103 built-ins deleted (runtime floor
+  shim), driving each app through R1 hardware events (`sideClick`,
+  `scrollUp/Down`, `longPressStart/End`); fails on any console error or
+  horizontal overflow. The denylist both layers share is `R1_JS_DENYLIST` in
+  `r1.config.mjs`.
 
 Vite build targets are locked to the same floor (`build.target` imports from
 `r1.config.mjs`), so syntax the webview can't parse fails the build. New apps

@@ -12,37 +12,21 @@
  *  4. Bundle budget (weak CPU on device).
  *
  * Known gap: iterator helpers (.take()/.drop() on iterators) are method calls and
- * cannot be reliably told apart from user methods in minified output. The smoke
- * suite exercises the app end-to-end in Chromium at the same version floor as a
- * behavioral backstop.
+ * cannot be safely told apart from user methods in minified output, so they are
+ * not grepped. The smoke suite deletes them (and every other denylist entry)
+ * from the runtime before app code runs — see R1_JS_DENYLIST in r1.config.mjs.
  *
  * Run: node scripts/check-r1-compat.mjs   (after pnpm build; exits non-zero on any violation)
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { R1_CHROMIUM_MAJOR, R1_JS_BUDGET_KB } from '../r1.config.mjs'
+import { R1_CHROMIUM_MAJOR, R1_JS_BUDGET_KB, R1_JS_DENYLIST } from '../r1.config.mjs'
 
 const root = join(import.meta.dirname, '..')
 
-/** JS built-ins that postdate the R1 webview floor. [label, minChrome, regex] */
-const JS_DENYLIST = [
-  ['Promise.withResolvers', 119, /Promise\s*\.\s*withResolvers\b/g],
-  ['Promise.try', 128, /Promise\s*\.\s*try\s*\(/g],
-  ['Array.fromAsync', 121, /Array\s*\.\s*fromAsync\s*\(/g],
-  ['Object.groupBy', 117, /Object\s*\.\s*groupBy\s*\(/g],
-  ['Map.groupBy', 117, /Map\s*\.\s*groupBy\s*\(/g],
-  ['RegExp.escape', 136, /RegExp\s*\.\s*escape\s*\(/g],
-  ['Array.prototype.toSorted', 110, /\.\s*toSorted\s*\(/g],
-  ['Array.prototype.toSpliced', 110, /\.\s*toSpliced\s*\(/g],
-  ['Array.prototype.toReversed', 110, /\.\s*toReversed\s*\(/g],
-  ['Array.prototype.with', 110, /\.\s*with\s*\(/g],
-  ['String.prototype.toWellFormed', 121, /\.\s*toWellFormed\s*\(/g],
-  ['String.prototype.isWellFormed', 121, /\.\s*isWellFormed\s*\(/g],
-  ['Element.showPopover', 114, /\.\s*showPopover\s*\(/g],
-  ['Element.hidePopover', 114, /\.\s*hidePopover\s*\(/g],
-  ['View transitions', 111, /\.\s*startViewTransition\s*\(/g],
-  ['"scrollend" event', 114, /['"]scrollend['"]/g],
-]
+// Scan half of the shared denylist (see r1.config.mjs); entries without a
+// `scan` regex are runtime-only and enforced by the device-sim smoke instead.
+const JS_SCANS = R1_JS_DENYLIST.flatMap((e) => (e.scan ? [{ label: e.label, minChrome: e.minChrome, re: new RegExp(e.scan.source, 'g') }] : []))
 
 /** CSS features that postdate the R1 webview floor. [label, minChrome, regex] */
 const CSS_DENYLIST = [
@@ -87,7 +71,7 @@ function checkApp(app, dist) {
 
     if (/\.(js|mjs)$/.test(file)) {
       jsBytes += statSync(file).size
-      for (const [label, minChrome, re] of JS_DENYLIST) {
+      for (const { label, minChrome, re } of JS_SCANS) {
         for (const match of text.matchAll(re)) report(app, file, label, `needs Chrome ${minChrome}, R1 floor is ${R1_CHROMIUM_MAJOR}`, match)
       }
     }

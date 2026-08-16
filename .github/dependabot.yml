@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: chore(deps)
+
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /apps/quickreader
+      - /apps/_template
+      - /packages/r1-kit
+    schedule:
+      interval: weekly
+    groups:
+      dev:
+        patterns: ['*']
+        dependency-type: development
+      prod:
+        patterns: ['*']
+        dependency-type: production
+    commit-message:
+      prefix: chore(deps)
