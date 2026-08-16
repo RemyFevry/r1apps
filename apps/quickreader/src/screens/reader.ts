@@ -1,34 +1,44 @@
-import { attachInputs, createListNav, installPayload, renderQr, visibleWindow, type Position, type Settings, type BookRecord } from 'r1-kit'
-import { delayFor, jumpChapter, orpIndex, previousSentenceStart } from '../engine/rsvp'
-import { formatDuration, timeRemainingMinutes } from '../engine/time'
+import {
+  attachInputs,
+  createListNav,
+  installPayload,
+  renderQr,
+  visibleWindow,
+  type Settings,
+  type BookRecord,
+} from 'r1-kit'
+import { createPlayback, type Playback, type PlaybackHudKind, type PlaybackSnapshot } from '../engine/playback'
+import { orpIndex } from '../engine/rsvp'
+import { formatDuration } from '../engine/time'
 import { bookmarkUrl } from '../ingestion/bookmark'
 import type { Ctx } from '../main'
 
 const FONT_PX: Record<Settings['font'], number> = { S: 20, M: 24, L: 30 }
-const CHAPTER_CARD_MS = 1500
-const DOUBLE_CLICK_MS = 300
-const SAVE_EVERY = 50
 const FIT_CHARS = 13
+
+/** Semantic HUD kinds → text + stickiness. All wording lives here, not in the engine. */
+function hudText(book: BookRecord, kind: PlaybackHudKind, s: PlaybackSnapshot): [string, boolean] {
+  switch (kind) {
+    case 'pause':
+      return [`⏸ ${s.wpm} wpm · ch ${formatDuration(s.remaining.chapter)} · ${formatDuration(s.remaining.book)} left`, true]
+    case 'resume':
+      return [`${s.wpm} wpm`, false]
+    case 'wpm':
+      return [`${s.wpm} wpm · ${formatDuration(s.remaining.book)} left`, false]
+    case 'chapterJump':
+      return [`Ⓒ ${s.chapter + 1}/${book.chapters.length} · ${formatDuration(s.remaining.chapter)} in ch`, true]
+    case 'chapterSeek':
+      return [`Ⓒ ${s.chapter + 1}/${book.chapters.length} — side = resume`, true]
+    case 'end':
+      return ['side button → library', true]
+  }
+}
 
 export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
   const { root, storage, settings, nav } = ctx
-  const offsets: number[] = []
-  let acc = 0
-  for (const c of book.chapters) {
-    offsets.push(acc)
-    acc += c.words.length
-  }
-  const paraSets = book.chapters.map((c) => new Set(c.paras))
 
-  let pos: Position = { chapter: 0, wordIndex: 0, wpm: settings.defaultWpm }
-  let playing = false
-  let finished = false
-  let destroyed = false
-  let pausedByClick = false
-  let pausedAt = 0
-  let sinceSave = 0
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let cardTimer: ReturnType<typeof setTimeout> | null = null
+  let pb: Playback | null = null
+  let unmounted = false
   let hudTimer: ReturnType<typeof setTimeout> | null = null
 
   const screen = document.createElement('div')
@@ -67,18 +77,10 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
   screen.append(topbar, stage, hud, overlay)
   root.append(screen)
 
-  const curWord = () => book.chapters[pos.chapter].words[pos.wordIndex]
-  const globalIndex = () => offsets[pos.chapter] + pos.wordIndex
-  const timesLeft = () => ({
-    chapter: timeRemainingMinutes(book.chapters[pos.chapter].words.length - pos.wordIndex, pos.wpm),
-    book: timeRemainingMinutes(book.wordCount - globalIndex(), pos.wpm),
-  })
-
-  function renderWord(): void {
-    const w = curWord()
-    topChapter.textContent = `${book.chapters[pos.chapter].title} · ${pos.chapter + 1}/${book.chapters.length}`
-    const t = timesLeft()
-    topPct.textContent = `${Math.floor((globalIndex() / book.wordCount) * 100)}% · ch ${formatDuration(t.chapter)} · ${formatDuration(t.book)}`
+  function renderWord(s: PlaybackSnapshot): void {
+    const w = book.chapters[s.chapter].words[s.wordIndex]
+    topChapter.textContent = `${book.chapters[s.chapter].title} · ${s.chapter + 1}/${book.chapters.length}`
+    topPct.textContent = `${Math.floor(s.frac * 100)}% · ch ${formatDuration(s.remaining.chapter)} · ${formatDuration(s.remaining.book)}`
     const base = FONT_PX[settings.font]
     wordline.style.fontSize = Math.round(Math.min(base, (base * FIT_CHARS) / Math.max(w.length, 1))) + 'px'
     if (settings.orp) {
@@ -102,102 +104,28 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     if (!sticky) hudTimer = setTimeout(() => hud.classList.remove('visible'), 900)
   }
 
-  function saveNow(): void {
-    pos.frac = globalIndex() / book.wordCount
-    void storage.savePosition(book.id, { ...pos }).catch(() => {})
-  }
-
-  function step(): void {
-    if (destroyed || !playing) return
-    renderWord()
-    const ch = book.chapters[pos.chapter]
-    const nextIsPara = pos.wordIndex + 1 < ch.words.length && paraSets[pos.chapter].has(pos.wordIndex + 1)
-    timer = setTimeout(advance, delayFor(curWord(), { wpm: pos.wpm, pacing: settings.pacing, nextIsPara }))
-  }
-
-  function showCard(): void {
-    overlayK.textContent = 'Chapter'
-    overlayT.textContent = book.chapters[pos.chapter].title
-    overlay.style.display = 'flex'
-    cardTimer = setTimeout(closeCard, CHAPTER_CARD_MS)
-  }
-
-  function closeCard(): void {
-    if (cardTimer) {
-      clearTimeout(cardTimer)
-      cardTimer = null
-    }
-    overlay.style.display = 'none'
-    playing = true
-    step()
-  }
-
-  function advance(): void {
-    const ch = book.chapters[pos.chapter]
-    if (pos.wordIndex < ch.words.length - 1) {
-      pos.wordIndex++
-      if (++sinceSave >= SAVE_EVERY) {
-        sinceSave = 0
-        saveNow()
-      }
-      step()
-    } else if (pos.chapter < book.chapters.length - 1) {
-      pos.chapter++
-      pos.wordIndex = 0
-      saveNow()
-      showCard()
-    } else {
-      finished = true
-      playing = false
-      saveNow()
+  function onStatus(s: PlaybackSnapshot): void {
+    if (s.status === 'cardPaused' || s.status === 'cardPlaying') {
+      overlayK.textContent = 'Chapter'
+      overlayT.textContent = book.chapters[s.chapter].title
+      overlay.style.display = 'flex'
+    } else if (s.status === 'finished') {
       overlayK.textContent = 'The End'
       overlayT.textContent = book.title
       overlay.style.display = 'flex'
-      showHud('side button → library', true)
+    } else {
+      overlay.style.display = 'none'
     }
   }
 
-  function pauseHud(): void {
-    const t = timesLeft()
-    showHud(`⏸ ${pos.wpm} wpm · ch ${formatDuration(t.chapter)} · ${formatDuration(t.book)} left`, true)
-  }
-
-  function pause(): void {
-    playing = false
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
-    pausedAt = Date.now()
-    saveNow()
-    pauseHud()
-  }
-
-  function resume(): void {
-    showHud(`${pos.wpm} wpm`)
-    playing = true
-    step()
-  }
-
-  function adjustWpm(delta: number): void {
-    pos.wpm = Math.min(800, Math.max(100, pos.wpm + delta))
-    if (playing) showHud(`${pos.wpm} wpm · ${formatDuration(timesLeft().book)} left`)
-    else pauseHud()
-  }
-
-  function jumpChapters(delta: number): void {
-    const next = jumpChapter(book.chapters, pos, delta)
-    const changed = next.chapter !== pos.chapter
-    pos.chapter = next.chapter
-    pos.wordIndex = next.wordIndex
-    sinceSave = 0
-    saveNow()
-    if (!playing) renderWord()
-    if (changed) showHud(`Ⓒ ${pos.chapter + 1}/${book.chapters.length} · ${formatDuration(timesLeft().chapter)} in ch`, true)
+  /** Scroll/long-press route by liveness — the old implicit `playing` boolean. */
+  function live(): boolean {
+    const st = pb?.snapshot().status
+    return st === 'playing' || st === 'cardPlaying'
   }
 
   function exit(): void {
-    saveNow()
+    pb?.flush()
     nav.library()
   }
 
@@ -252,14 +180,14 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
           } else {
             const c = book.chapters[chapterRow(i)]
             t.textContent = `${chapterRow(i) + 1}. ${c.title}`
-            if (chapterRow(i) === pos.chapter) t.style.color = 'var(--accent)'
+            if (chapterRow(i) === pb?.snapshot().chapter) t.style.color = 'var(--accent)'
           }
           row.append(t)
           list.append(row)
         }
       },
     })
-    chapterNav.jumpTo(pos.chapter + 1)
+    chapterNav.jumpTo((pb?.snapshot().chapter ?? 0) + 1)
     root.append(el)
     chapterEl = el
   }
@@ -272,7 +200,9 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
 
   function showBookmark(): void {
     hideBookmark()
-    saveNow()
+    pb?.flush()
+    const s = pb?.snapshot()
+    if (!s) return
     const el = document.createElement('div')
     el.className = 'card-overlay'
     const k = document.createElement('div')
@@ -284,14 +214,14 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     qrBox.style.borderRadius = '8px'
     const hint = document.createElement('div')
     hint.className = 'status'
-    hint.textContent = `ch ${pos.chapter + 1} · word ${pos.wordIndex} · ${pos.wpm} wpm — side = back, hold = library`
+    hint.textContent = `ch ${s.chapter + 1} · word ${s.wordIndex} · ${s.wpm} wpm — side = back, hold = library`
     el.append(k, qrBox, hint)
     const base = location.href.split(/[?#]/)[0]
     renderQr(
       qrBox,
       installPayload({
         title: 'QuickReader bookmark',
-        url: bookmarkUrl(base, __COMMIT_SHA__, { id: book.id, chapter: pos.chapter, wordIndex: pos.wordIndex, wpm: pos.wpm }),
+        url: bookmarkUrl(base, __COMMIT_SHA__, { id: book.id, chapter: s.chapter, wordIndex: s.wordIndex, wpm: s.wpm }),
         description: 'Resume reading',
         themeColor: '#FE5000',
       }),
@@ -306,7 +236,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     bookmarkEl = null
   }
 
-  const flush = () => saveNow()
+  const flush = () => pb?.flush()
   const onVis = () => {
     if (document.visibilityState === 'hidden') flush()
   }
@@ -328,49 +258,22 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
           exit()
           return
         }
-        const target = sel - 1
         hideChapterIndex()
-        pos.chapter = target
-        pos.wordIndex = 0
-        sinceSave = 0
-        saveNow()
-        playing = false
-        renderWord()
-        showHud(`Ⓒ ${pos.chapter + 1}/${book.chapters.length} — side = resume`, true)
+        pb?.seekChapter(sel - 1)
         return
       }
       if (bookmarkEl) {
         hideBookmark()
         return
       }
-      if (cardTimer) {
-        closeCard()
-        return
-      }
-      if (finished) {
-        exit()
-        return
-      }
-      if (playing) {
-        pausedByClick = true
-        pause()
-        return
-      }
-      if (pausedByClick && Date.now() - pausedAt < DOUBLE_CLICK_MS) {
-        pausedByClick = false
-        const ch = book.chapters[pos.chapter]
-        pos.wordIndex = previousSentenceStart(ch.words, pos.wordIndex)
-        resume()
-        return
-      }
-      pausedByClick = false
-      resume()
+      pb?.click()
     },
     onLongPressStart() {
       if (chapterEl) {
         hideChapterIndex()
-        renderWord()
-        showHud(`⏸ ${pos.wpm} wpm · hold = chapters`, true)
+        const s = pb?.snapshot()
+        if (s) renderWord(s)
+        showHud(`⏸ ${s?.wpm ?? settings.defaultWpm} wpm · hold = chapters`, true)
         return
       }
       if (bookmarkEl) {
@@ -378,7 +281,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
         exit()
         return
       }
-      if (playing) {
+      if (live()) {
         exit()
         return
       }
@@ -390,48 +293,54 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
         chapterNav!.up()
         return
       }
-      if (playing) adjustWpm(-10)
-      else jumpChapters(-1)
+      if (live()) pb?.setWpm(-10)
+      else pb?.jump(-1)
     },
     onScrollDown() {
       if (chapterEl) {
         chapterNav!.down()
         return
       }
-      if (playing) adjustWpm(10)
-      else jumpChapters(1)
+      if (live()) pb?.setWpm(10)
+      else pb?.jump(1)
     },
   })
 
   void (async () => {
     const saved = await storage.loadPosition(book.id)
-    if (saved) {
-      pos = { ...saved }
-      if (!pos.wpm) pos.wpm = settings.defaultWpm
-    }
-    if (
-      pos.chapter < book.chapters.length &&
-      pos.wordIndex > 0 &&
-      pos.wordIndex < book.chapters[pos.chapter].words.length
-    ) {
-      playing = true
-      step()
-    } else {
-      pos.wordIndex = 0
-      showCard()
-    }
+    if (unmounted) return
+    const initial = saved
+      ? { chapter: saved.chapter, wordIndex: saved.wordIndex, wpm: saved.wpm || settings.defaultWpm }
+      : { chapter: 0, wordIndex: 0, wpm: settings.defaultWpm }
+    pb = createPlayback({
+      chapters: book.chapters,
+      initial,
+      pacing: settings.pacing,
+      events: {
+        onWord: renderWord,
+        onStatus,
+        onHud: (kind, s) => showHud(...hudText(book, kind, s)),
+        onExit: () => nav.library(),
+      },
+      seams: {
+        save: (p) => {
+          void storage.savePosition(book.id, p).catch(() => {})
+        },
+        now: () => Date.now(),
+        schedule: (fn, ms) => setTimeout(fn, ms),
+        cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+      },
+    })
   })()
 
   return () => {
-    destroyed = true
-    if (timer) clearTimeout(timer)
-    if (cardTimer) clearTimeout(cardTimer)
+    unmounted = true
+    pb?.destroy()
     if (hudTimer) clearTimeout(hudTimer)
     window.removeEventListener('pagehide', flush)
     document.removeEventListener('visibilitychange', onVis)
     hideChapterIndex()
     hideBookmark()
-    saveNow()
     detach()
   }
 }
