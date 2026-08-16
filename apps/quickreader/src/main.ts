@@ -3,10 +3,9 @@ import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, inflateMode, prob
 import { decodeBookmark } from './ingestion/bookmark'
 import { ShelfStorage } from './ingestion/shelf'
 import { decodeTransitRef, transitRawUrl } from './ingestion/transit'
-import { deepLinkScreen } from './screens/deeplink'
+import { ingestionScreen } from './screens/ingestion-screen'
 import { libraryScreen } from './screens/library'
 import { readerScreen } from './screens/reader'
-import { addBookScreen } from './screens/addbook'
 import { settingsScreen } from './screens/settings'
 
 export interface Nav {
@@ -59,7 +58,7 @@ function show(mount: (ctx: Ctx) => () => void): void {
 const nav: Nav = {
   library: () => show((ctx) => libraryScreen(ctx)),
   openBook: (book) => show((ctx) => readerScreen(ctx, book)),
-  addBook: () => show((ctx) => addBookScreen(ctx)),
+  addBook: () => show((ctx) => ingestionScreen(ctx)),
   settings: () => show((ctx) => settingsScreen(ctx)),
 }
 
@@ -90,7 +89,7 @@ async function boot(): Promise<void> {
     const ref = decodeTransitRef(code)
     return ref ? transitRawUrl(ref) : null
   })()
-  if (add) show((ctx) => deepLinkScreen(ctx, add))
+  if (add) show((ctx) => ingestionScreen(ctx, add))
   else nav.library()
 }
 

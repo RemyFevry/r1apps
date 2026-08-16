@@ -12,7 +12,9 @@ decisions make them sharp.
 - **Book** — a DRM-free EPUB fetched from a static URL. Never committed to this repo.
 - **Ingestion** — getting a Book onto the device: QR deep-link (`?add=<book-url>`) or
   typed URL, both feeding one fetch-and-store pipeline (ADR-0001).
-- **Add-Book screen** — in-app screen with a textarea for typing/pasting a book URL.
+- **Add-Book screen** — the typed-URL mount of the unified ingestion screen
+  (`screens/ingestion-screen.ts`, textarea + Add/Back); the deep-link mount starts
+  the same screen auto-ingesting with no form (#12, ADR-0001).
 - **Word stream** — the pre-extracted, flat sequence of display words (with chapter
   boundaries) that the RSVP engine consumes; what gets stored, not the raw EPUB.
 - **RSVP** — Rapid Serial Visual Presentation: words flashed one at a time.
