@@ -1,5 +1,6 @@
 import { attachInputs, createListNav, installPayload, renderQr, visibleWindow, type Position, type Settings, type BookRecord } from 'r1-kit'
 import { delayFor, jumpChapter, orpIndex, previousSentenceStart } from '../engine/rsvp'
+import { formatDuration, timeRemainingMinutes } from '../engine/time'
 import { bookmarkUrl } from '../ingestion/bookmark'
 import type { Ctx } from '../main'
 
@@ -68,11 +69,16 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
 
   const curWord = () => book.chapters[pos.chapter].words[pos.wordIndex]
   const globalIndex = () => offsets[pos.chapter] + pos.wordIndex
+  const timesLeft = () => ({
+    chapter: timeRemainingMinutes(book.chapters[pos.chapter].words.length - pos.wordIndex, pos.wpm),
+    book: timeRemainingMinutes(book.wordCount - globalIndex(), pos.wpm),
+  })
 
   function renderWord(): void {
     const w = curWord()
     topChapter.textContent = `${book.chapters[pos.chapter].title} · ${pos.chapter + 1}/${book.chapters.length}`
-    topPct.textContent = Math.floor((globalIndex() / book.wordCount) * 100) + '%'
+    const t = timesLeft()
+    topPct.textContent = `${Math.floor((globalIndex() / book.wordCount) * 100)}% · ch ${formatDuration(t.chapter)} · ${formatDuration(t.book)}`
     const base = FONT_PX[settings.font]
     wordline.style.fontSize = Math.round(Math.min(base, (base * FIT_CHARS) / Math.max(w.length, 1))) + 'px'
     if (settings.orp) {
@@ -151,6 +157,11 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     }
   }
 
+  function pauseHud(): void {
+    const t = timesLeft()
+    showHud(`⏸ ${pos.wpm} wpm · ch ${formatDuration(t.chapter)} · ${formatDuration(t.book)} left`, true)
+  }
+
   function pause(): void {
     playing = false
     if (timer) {
@@ -159,7 +170,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     }
     pausedAt = Date.now()
     saveNow()
-    showHud(`⏸ ${pos.wpm} wpm · hold = chapters`, true)
+    pauseHud()
   }
 
   function resume(): void {
@@ -170,8 +181,8 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
 
   function adjustWpm(delta: number): void {
     pos.wpm = Math.min(800, Math.max(100, pos.wpm + delta))
-    if (playing) showHud(`${pos.wpm} wpm`)
-    else showHud(`⏸ ${pos.wpm} wpm`, true)
+    if (playing) showHud(`${pos.wpm} wpm · ${formatDuration(timesLeft().book)} left`)
+    else pauseHud()
   }
 
   function jumpChapters(delta: number): void {
@@ -182,7 +193,7 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
     sinceSave = 0
     saveNow()
     if (!playing) renderWord()
-    if (changed) showHud(`Ⓒ ${pos.chapter + 1}/${book.chapters.length}`, true)
+    if (changed) showHud(`Ⓒ ${pos.chapter + 1}/${book.chapters.length} · ${formatDuration(timesLeft().chapter)} in ch`, true)
   }
 
   function exit(): void {
@@ -343,7 +354,6 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
       if (playing) {
         pausedByClick = true
         pause()
-        showHud(`⏸ ${pos.wpm} wpm · hold = chapters`, true)
         return
       }
       if (pausedByClick && Date.now() - pausedAt < DOUBLE_CLICK_MS) {
