@@ -59,3 +59,24 @@ The RSVP engine and library UI never touch a storage engine directly.
 - Ingestion pipeline ends at `saveBook`; reader starts at `loadBook` — both testable
   headless against the in-memory adapter.
 - If creationStorage quotas or behavior disappoint on-device, only the adapter changes.
+
+## Amendment (2026-08-16, #13): mirrored persistence + storage health
+
+- **Mirror reality**: positions and settings are *also* mirrored to
+  `creationStorage.plain` (keys `pos:<id>`, `settings`) — on firmware where
+  localStorage does not survive a webview restart, the mirror is the durable
+  copy; loads fall back to it when localStorage is empty. Small records only
+  (the earlier failure mode was whole-book writes).
+- **localStorage is namespaced per app** (`<ns>:pos:<id>`, `<ns>:settings`;
+  the adapter takes the namespace, the kit ships none).
+- **Health is part of the seam**: `Storage.health()` answers what the adapter
+  actually guarantees, per kind — `{books, progress}` each `device | bundle |
+  session | write-lost`. The device adapter is presence-live (a bridge
+  appearing after boot is picked up on the next call, which runs the write→
+  read-back probe then — books flip immediately, progress verifies one call
+  later; write-loss is sticky). The shelf adapter reports `books: 'bundle'`
+  while any bundled book is visible: a shelf build with broken device storage
+  must not call its books broken when the bundle is fine; progress is always
+  the delegate's answer. The library header renders this as
+  `storage:<books>/<progress>` (e.g. `storage:bundle/device`) — it is the
+  string bug reports quote.

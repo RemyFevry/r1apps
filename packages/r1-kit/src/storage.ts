@@ -46,6 +46,18 @@ export interface Storage {
   loadPosition(id: string): Promise<Position | null>
   saveSettings(s: Settings): Promise<void>
   loadSettings(): Promise<Settings | null>
+  /** What this adapter actually guarantees, per kind of data (#13). */
+  health(): StorageHealth
+}
+
+/** Durability answers an adapter can give for one kind of data. */
+export type HealthKind = 'device' | 'bundle' | 'session' | 'write-lost'
+
+export interface StorageHealth {
+  /** Where book word streams durably live. */
+  books: HealthKind
+  /** Where positions + settings durably live. */
+  progress: HealthKind
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -89,7 +101,33 @@ export class DeviceStorage implements Storage {
   constructor(
     private cs: CreationStorageArea | (() => CreationStorageArea | undefined),
     private ns: string,
-  ) {}
+  ) {
+    void this.probe()
+  }
+
+  /**
+   * Presence is live — a bridge injected after boot is picked up on the next
+   * call, which triggers the write→read-back probe then (one call of lag:
+   * books flip immediately, progress verifies on the following call).
+   */
+  health(): StorageHealth {
+    const area = this.area()
+    if (!area) return { books: 'session', progress: 'session' }
+    if (this.probeResult === null && !this.probing) void this.probe()
+    if (this.probeResult === 'write-lost') return { books: 'write-lost', progress: 'session' }
+    return { books: 'device', progress: this.probeResult === 'device' ? 'device' : 'session' }
+  }
+
+  private probeResult: StorageProbeResult | null = null
+  private probing = false
+
+  private async probe(): Promise<void> {
+    const area = this.area()
+    if (!area) return
+    this.probing = true
+    this.probeResult = await probeDeviceStorage(() => area)
+    this.probing = false
+  }
 
   private area(): CreationStorageArea | undefined {
     return typeof this.cs === 'function' ? this.cs() : this.cs
@@ -252,6 +290,10 @@ export class MemoryStorage implements Storage {
   async loadSettings(): Promise<Settings | null> {
     return this.settings
   }
+
+  health(): StorageHealth {
+    return { books: 'session', progress: 'session' }
+  }
 }
 
 function getCreationStorage(): CreationStorageArea | undefined {
@@ -262,11 +304,13 @@ export function hasCreationStorage(): boolean {
   return getCreationStorage() != null
 }
 
-export type StorageHealth = 'device' | 'write-lost' | 'absent'
+export type StorageProbeResult = 'device' | 'write-lost' | 'absent'
 
 /** Write→read-back probe: a fire-and-forget bridge reports write-lost. */
-export async function probeDeviceStorage(): Promise<StorageHealth> {
-  const area = getCreationStorage()
+export async function probeDeviceStorage(
+  getArea: () => CreationStorageArea | undefined = getCreationStorage,
+): Promise<StorageProbeResult> {
+  const area = getArea()
   if (!area) return 'absent'
   try {
     const token = 'probe-' + Date.now().toString(36)

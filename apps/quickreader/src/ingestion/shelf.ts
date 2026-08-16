@@ -1,4 +1,4 @@
-import type { BookMeta, BookRecord, Position, Settings, Storage } from 'r1-kit'
+import type { BookMeta, BookRecord, Position, Settings, Storage, StorageHealth } from 'r1-kit'
 
 const HIDDEN_KEY = 'quickreader:shelf-hidden'
 
@@ -92,5 +92,17 @@ export class ShelfStorage implements Storage {
 
   async loadSettings(): Promise<Settings | null> {
     return this.delegate.loadSettings()
+  }
+
+  /**
+   * Coarse by design (#13): with any bundled book visible, books report 'bundle'
+   * (those are durable regardless of device storage); progress is always the
+   * delegate's answer. A shelf build with broken device storage must not read
+   * storage:broken for books that are fine.
+   */
+  health(): StorageHealth {
+    const d = this.delegate.health()
+    const anyBundled = [...this.bundled.values()].some((b) => !this.hiddenIds.has(b.id))
+    return { books: anyBundled ? 'bundle' : d.books, progress: d.progress }
   }
 }

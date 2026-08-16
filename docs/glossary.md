@@ -28,7 +28,7 @@ decisions make them sharp.
 - **Pacing preset** — relaxed / standard / snappy; scales the punctuation pause
   multipliers (ADR-0002).
 - **Storage seam** — the one interface (`saveBook`/`loadBook`/`listBooks`/`deleteBook`/
-  `savePosition`/`loadPosition`/`saveSettings`/`loadSettings`) with two adapters:
+  `savePosition`/`loadPosition`/`saveSettings`/`loadSettings`/`health`) with two adapters:
   on-device (creationStorage + localStorage) and in-memory for tests/desktop (ADR-0003).
 - **install.html** — QR companion page per app: renders the install QR and, for
   QuickReader, book deep-link QRs; `?v=<build id>` cache-busting injected at build (semver on shelf builds, commit SHA on CI) (ADR-0004).

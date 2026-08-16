@@ -1,5 +1,5 @@
 import './style.css'
-import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, inflateMode, probeDeviceStorage, type BookRecord, type InflateMode, type Settings, type Storage, type StorageHealth } from 'r1-kit'
+import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, inflateMode, type BookRecord, type InflateMode, type Settings, type Storage } from 'r1-kit'
 import { decodeBookmark } from './deeplink/bookmark'
 import { decodeBookParam } from './deeplink/params'
 import { ShelfStorage } from './ingestion/shelf'
@@ -21,15 +21,14 @@ export interface Ctx {
   nav: Nav
 }
 
-/** Boot-time platform facts — only the library screen displays them (#16). */
+/** Boot-time platform facts — only the library screen displays them (#16). Storage health is answered by the storage seam itself (#13). */
 export interface Diagnostics {
-  storageHealth: StorageHealth
   zipMode: InflateMode
 }
 
 const app = document.getElementById('app') as HTMLElement
 const storage: Storage = new ShelfStorage(__BUNDLED_BOOKS__, __BUNDLED_BOOKS_SHA__, createStorage('quickreader'))
-const diag: Diagnostics = { storageHealth: 'absent', zipMode: 'fflate' }
+const diag: Diagnostics = { zipMode: 'fflate' }
 
 let cleanup: (() => void) | null = null
 
@@ -70,7 +69,6 @@ const nav: Nav = {
 
 async function boot(): Promise<void> {
   applyPlatform()
-  diag.storageHealth = await probeDeviceStorage()
   diag.zipMode = await inflateMode()
   const hash = /#p=([A-Za-z0-9._-]+)/.exec(location.hash)
   const bookmark = hash ? decodeBookmark(hash[1]) : null

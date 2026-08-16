@@ -143,6 +143,45 @@ describe('DeviceStorage', () => {
     expect(ls.has('app-two:settings')).toBe(false)
     expect(await a.loadPosition('x')).toEqual({ chapter: 0, wordIndex: 1, wpm: 300 })
   })
+
+  test('health: session when the bridge is absent, live once it appears (#13)', async () => {
+    let area: ReturnType<typeof fakeArea> | undefined
+    const s = new DeviceStorage(() => area, 'quickreader')
+    expect(s.health()).toEqual({ books: 'session', progress: 'session' })
+    area = fakeArea()
+    // Presence flips books immediately; the probe triggers and verifies progress
+    // for the next call.
+    expect(s.health()).toEqual({ books: 'device', progress: 'session' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(s.health()).toEqual({ books: 'device', progress: 'device' })
+  })
+
+  test('health: write-lost books when a fire-and-forget bridge never reads back', async () => {
+    const s = new DeviceStorage(
+      () => ({
+        async getItem() {
+          return null
+        },
+        async setItem() {},
+        async removeItem() {},
+      }),
+      'quickreader',
+    )
+    await new Promise((r) => setTimeout(r, 0)) // let the constructor probe finish
+    expect(s.health()).toEqual({ books: 'write-lost', progress: 'session' })
+  })
+
+  test('health: device/device when the probe reads back', async () => {
+    const s = new DeviceStorage(fakeArea(), 'quickreader')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(s.health()).toEqual({ books: 'device', progress: 'device' })
+  })
+})
+
+describe('MemoryStorage health', () => {
+  test('everything is session-scoped', () => {
+    expect(new MemoryStorage().health()).toEqual({ books: 'session', progress: 'session' })
+  })
 })
 
 test('b64 helpers round-trip unicode', () => {
