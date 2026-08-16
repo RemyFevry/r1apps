@@ -19,7 +19,7 @@
 </head>
 <body>
   <main>
-    <h1>QuickReader <span style="color:#fe5000">shelf</span></h1>
+    <h1>QuickReader <span style="color:#fe5000">shelf</span> <span id="page-ver" style="color:rgba(255,255,255,0.55);font-size:16px"></span></h1>
     <p>Personal build — your bundled books are already inside the app.</p>
     <section>
       <h2>Install on your R1</h2>
@@ -36,7 +36,9 @@
   <script type="module">
     const status = document.getElementById('status')
     const shelfRoot = new URL('.', location.href).href
-    const ver = new URLSearchParams(location.search).get('v') ?? new Date().getTime().toString(36)
+    const fromPath = /\/v\/([^/]+)\//.exec(location.pathname)?.[1]
+    const ver = fromPath ?? new URLSearchParams(location.search).get('v') ?? 'dev'
+    document.getElementById('page-ver').textContent = 'v' + ver
     const url = `${shelfRoot}app.html?v=${ver}`
     const lib = globalThis.__shelfInstall
     if (!lib) {
@@ -46,7 +48,7 @@
       renderQr(
         document.getElementById('install-qr'),
         installPayload({
-          title: 'QuickReader shelf',
+          title: 'QuickReader ' + ver,
           url,
           description: 'RSVP speed reader - personal shelf',
           themeColor: '#FE5000',

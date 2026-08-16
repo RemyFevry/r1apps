@@ -74,6 +74,16 @@ Pages serving was blocked account-wide (deployments reported success but every
 URL returned "Site not found", reproduced on a fresh probe repo); the history
 and all `v/<ver>/` artifacts were mirrored to the new home unchanged.
 
+**Semver + named creations (2026-08-16, later):** timestamp versions were
+opaque and every shelf card was named identically ("QuickReader shelf"), so a
+card stack couldn't tell builds apart without opening them. Versions are now
+semver from `apps/quickreader/package.json` (`pnpm bookshelf bump
+<major|minor|patch>`), sync refuses to reship an already-published `v/<ver>/`,
+and the install QR's payload title — the R1 creation name — is
+`QuickReader <ver>`. The app's library header shows the same `v<ver>`
+(injected at build as `__APP_VERSION__`). Pre-semver artifacts keep their
+timestamp dir names.
+
 ## Consequences
 
 - One pipeline, two doors — ingestion logic is testable headless.

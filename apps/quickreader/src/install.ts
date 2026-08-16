@@ -14,7 +14,7 @@ const makeQr = document.getElementById('make-qr') as HTMLButtonElement
 renderQr(
   installQr,
   installPayload({
-    title: 'QuickReader',
+    title: `QuickReader ${__APP_VERSION__}`,
     url: versionedUrl,
     description: 'RSVP speed reader for EPUB ebooks',
     themeColor,

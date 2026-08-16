@@ -4,7 +4,9 @@
 //   pnpm bookshelf add <book.epub>     extract locally, add to apps/quickreader/books/
 //   pnpm bookshelf list                show bundled books
 //   pnpm bookshelf remove <slug>       remove one
-//   pnpm bookshelf sync                build + deploy the shelf (remyf-agent/r1-shelf),
+//   pnpm bookshelf bump <major|minor|patch>
+//                                      increment apps/quickreader/package.json version
+//   pnpm bookshelf sync                build + deploy the shelf (RemyFevry/r1-shelf),
 //                                      print the install QR page URL
 //
 // Why: on-device ingestion needs a public CORS host and a deep-link scan, and
@@ -25,6 +27,7 @@ import { Window } from 'happy-dom'
 const ROOT = resolve(import.meta.dirname, '..')
 const BOOKS_DIR = join(ROOT, 'apps/quickreader/books')
 const APP = 'quickreader'
+const APP_PKG = join(ROOT, 'apps', APP, 'package.json')
 const SHELF_REPO_OWNER = 'RemyFevry'
 const SHELF_REPO = `${SHELF_REPO_OWNER}/r1-shelf`
 const SHELF_URL = `https://${SHELF_REPO_OWNER.toLowerCase()}.github.io/r1-shelf/`
@@ -52,6 +55,12 @@ function smallHash(s) {
   let h = 5381
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0
   return h.toString(36)
+}
+
+function appVersion() {
+  const v = JSON.parse(readFileSync(APP_PKG, 'utf8')).version
+  if (!/^\d+\.\d+\.\d+$/.test(v)) die(`apps/quickreader/package.json version is not semver: ${v}`)
+  return v
 }
 
 async function extract(file) {
@@ -147,14 +156,25 @@ async function main() {
     return
   }
 
+  if (cmd === 'bump') {
+    const part = args[0]
+    if (!['major', 'minor', 'patch'].includes(part)) die('usage: pnpm bookshelf bump <major|minor|patch>')
+    const [major, minor, patch] = appVersion().split('.').map(Number)
+    const next = part === 'major' ? `${major + 1}.0.0` : part === 'minor' ? `${major}.${minor + 1}.0` : `${major}.${minor}.${patch + 1}`
+    const pkg = JSON.parse(readFileSync(APP_PKG, 'utf8'))
+    pkg.version = next
+    writeFileSync(APP_PKG, JSON.stringify(pkg, null, 2) + '\n')
+    console.log(`bumped ${part}: v${[major, minor, patch].join('.')} → v${next} (apps/quickreader/package.json — commit it with your change)`)
+    return
+  }
+
   if (cmd === 'sync') {
     if (!bundledFiles().length) die('no books bundled — add one first: pnpm bookshelf add <book.epub>')
-    const ver = Date.now().toString(36)
+    const ver = appVersion()
     console.log('building quickreader with bundled books …')
     run('pnpm', ['--filter', APP, 'build'], { cwd: ROOT, env: { ...process.env, COMMIT_SHA: ver } })
 
     const dist = join(ROOT, 'apps', APP, 'dist')
-    const tmp = mkdtempSync(join(tmpdir(), 'r1-shelf-'))
     const site = mkdtempSync(join(tmpdir(), 'r1-shelf-site-'))
     const stage = mkdtempSync(join(tmpdir(), 'r1-shelf-stage-'))
     let created = false
@@ -166,7 +186,7 @@ async function main() {
       const appHtml = readFileSync(join(dist, 'index.html'), 'utf8')
       const shelfHtml = appHtml
         .replaceAll('/r1apps/quickreader/', SHELF_BASE)
-        .replace('<title>QuickReader</title>', '<title>QuickReader shelf</title>')
+        .replace('<title>QuickReader</title>', `<title>QuickReader shelf v${ver}</title>`)
       writeFileSync(join(site, 'app.html'), shelfHtml)
       const companion = readFileSync(join(site, 'shelf-install.html'), 'utf8').replaceAll(
         '/r1apps/quickreader/',
@@ -191,6 +211,9 @@ async function main() {
       if (!created) {
         // Prior version artifacts carry forward: every v/<ver>/ ever synced stays served.
         run('git', ['pull', '--ff-only', 'origin', 'main'], { cwd: stage })
+        if (existsSync(join(stage, 'v', ver))) {
+          die(`v/${ver}/ is already shipped and immutable — bump first: pnpm bookshelf bump <major|minor|patch>`)
+        }
         if (!existsSync(join(stage, 'v'))) {
           // One-time migration: the pre-versioning root build becomes v/<its ver>/.
           const priorMsg = run('git', ['log', '-1', '--format=%s'], { cwd: stage })
@@ -242,18 +265,19 @@ async function main() {
       console.log('install QR page — permanent URL for this build (open on phone/computer, scan with the R1):')
       console.log(`  ${SHELF_URL}v/${ver}/install.html`)
       console.log('\nnotes:')
-      console.log('  - each sync keeps its build at v/<ver>/ forever: old QR URLs stay valid and re-fetchable')
+      console.log(`  - the R1 creation is named "QuickReader ${ver}" — the version is visible on the card`)
+      console.log('  - versions are semver from apps/quickreader/package.json; bump before each sync (a shipped v/<ver>/ is immutable):')
+      console.log('    pnpm bookshelf bump <major|minor|patch> — then commit the package.json change and sync')
       console.log(`  - the unversioned root (${SHELF_URL}) always serves the latest build (browsers)`)
       console.log('  - the shelf repo is public (unguessable exposure model, same as r1book transit)')
-      console.log('  - builds accumulate in the repo (~1 MB each); adding books: pnpm bookshelf add … && pnpm bookshelf sync, rescan the new QR')
     } finally {
-      rmSync(tmp, { recursive: true, force: true })
+      rmSync(site, { recursive: true, force: true })
       rmSync(stage, { recursive: true, force: true })
     }
     return
   }
 
-  die('usage: pnpm bookshelf <add|list|remove|sync>')
+  die('usage: pnpm bookshelf <add|list|remove|bump|sync>')
 }
 
 main().catch((e) => die(e?.message ?? String(e)))

@@ -48,11 +48,14 @@ copy lives in the bundle, not device storage.
   to `apps/quickreader/books/` (gitignored; this folder **is** your library
   manifest — don't delete it unless you mean to drop books).
 - `pnpm bookshelf sync` — bundles **every** book in that folder into a fresh
-  build, deploys `RemyFevry/r1-shelf`, prints the QR page. Every sync lives
-  at a permanent `v/<ver>/` URL — old QR links keep serving the exact build
-  they were minted for, so a card (or a bug report quoting `v=`) is always
-  re-fetchable; the unversioned root always serves the latest build. Rescan to
-  pick a new version up; the library then shows old + new books together.
+  build, deploys `RemyFevry/r1-shelf`, prints the QR page. Versions are semver
+  from `apps/quickreader/package.json` — `pnpm bookshelf bump
+  <major|minor|patch>` before each sync (a shipped version is immutable; sync
+  refuses to overwrite). Every sync lives at a permanent `v/<ver>/` URL and the
+  R1 creation is named **QuickReader \<ver\>**, so the card itself shows what
+  it's running; old QR links keep serving the exact build they were minted
+  for. The unversioned root always serves the latest build. Rescan to pick a
+  new version up; the library then shows old + new books together.
   Nothing is ever dropped by adding books.
 - `pnpm bookshelf list` / `pnpm bookshelf remove <slug>` — review or permanently
   remove; removal takes effect at the next `sync`.
