@@ -30,6 +30,11 @@ export interface PlaybackSnapshot {
 
 export type PlaybackHudKind = 'pause' | 'resume' | 'wpm' | 'chapterJump' | 'chapterSeek' | 'end'
 
+/** Statuses under which the word stream moves — the old implicit `playing` boolean. */
+export function isLive(status: PlaybackStatus): boolean {
+  return status === 'playing' || status === 'cardPlaying'
+}
+
 export interface PlaybackEvents {
   onWord?(s: PlaybackSnapshot): void
   onStatus?(s: PlaybackSnapshot): void
@@ -95,7 +100,7 @@ export function createPlayback(opts: PlaybackOptions): Playback {
   let pausedViaClick = false
   let pausedAt = 0
 
-  const live = () => st === 'playing' || st === 'cardPlaying'
+  const live = () => isLive(st)
 
   function frac(): number {
     return (offsets[chapter] + wordIndex) / wordCount
