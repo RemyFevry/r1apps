@@ -15,7 +15,7 @@ page — is inherited automatically.
 That's it. CI builds it, runs the R1 gate on it, and — once merged to `main` —
 deploys it to `https://remyfevry.github.io/r1apps/<name>/` with its
 `install.html` QR companion. See the [root README](../../README.md) for the
-gate; [ADR-0006](../../docs/adr/0006-r1-compatibility-gate-ci.md) for why.
+gate; [ADR-0013](../../docs/adr/0013-r1-compatibility-gate-ci.md) for why.
 
 ## What the template gives you
 
