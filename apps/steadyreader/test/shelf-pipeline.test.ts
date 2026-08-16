@@ -21,6 +21,7 @@ afterEach(() => {
 
 const STAGE = {
   appBase: APP_BASE,
+  shelfBase: '/steady-shelf/',
   appTitle: 'SteadyReader',
   companion: 'shelf-install.html',
   dropFiles: ['install.html'],
@@ -63,6 +64,21 @@ describe('stageShelfSite (steadyreader)', () => {
     }
     // hashed assets carried over
     expect(existsSync(join(site, 'assets', 'main-AbC123.js'))).toBe(true)
+  })
+
+  test('rebased asset URLs resolve inside the staged tree (shelf serves at its own base)', () => {
+    const dist = fixtureDist()
+    const site = tmp('site')
+    stageShelfSite(dist, site, '0.1.0', STAGE)
+    for (const page of ['app.html', 'install.html']) {
+      const html = readFileSync(join(site, page), 'utf8')
+      for (const m of html.matchAll(/(?:src|href)="(\/[^"]+)"/g)) {
+        const ref = m[1]
+        expect(ref.startsWith(STAGE.shelfBase)).toBe(true) // never a foreign absolute path
+        const rel = ref.slice(STAGE.shelfBase.length)
+        expect(existsSync(join(site, rel))).toBe(true) // and it exists in the tree
+      }
+    }
   })
 
   test('shippedVersion guard works on a staged tree', () => {

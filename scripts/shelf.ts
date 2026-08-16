@@ -58,6 +58,8 @@ export function shippedVersion(stage: string, ver: string): boolean {
 export interface StageAppOpts {
   /** The app's vite base — the single source lives in its app.config.ts. */
   appBase: string
+  /** The app's shelf base: the site-root path its shelf repo serves at. */
+  shelfBase: string
   /** <title> of the app page; becomes "<title> shelf v<ver>" on the shelf. */
   appTitle: string
   /** The dist file that becomes the shelf's install.html (quickreader stages a dedicated companion). */
@@ -68,6 +70,7 @@ export interface StageAppOpts {
 
 export const QUICKREADER_STAGE: StageAppOpts = {
   appBase: APP_BASE,
+  shelfBase: SHELF_BASE,
   appTitle: 'QuickReader',
   companion: 'shelf-install.html',
   dropFiles: ['install.html'],
@@ -78,11 +81,11 @@ export function stageShelfSite(dist: string, site: string, ver: string, opts: St
   for (const f of opts.dropFiles) rmSync(join(site, f))
   const appHtml = readFileSync(join(dist, 'index.html'), 'utf8')
   const shelfHtml = appHtml
-    .replaceAll(opts.appBase, SHELF_BASE)
+    .replaceAll(opts.appBase, opts.shelfBase)
     .replace(`<title>${opts.appTitle}</title>`, `<title>${opts.appTitle} shelf v${ver}</title>`)
   writeFileSync(join(site, 'app.html'), shelfHtml)
   rmSync(join(site, 'index.html'))
-  const companion = readFileSync(join(site, opts.companion), 'utf8').replaceAll(opts.appBase, SHELF_BASE)
+  const companion = readFileSync(join(site, opts.companion), 'utf8').replaceAll(opts.appBase, opts.shelfBase)
   writeFileSync(join(site, 'install.html'), companion)
   rmSync(join(site, opts.companion))
 }

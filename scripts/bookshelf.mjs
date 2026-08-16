@@ -73,6 +73,7 @@ const APPS = {
     shelfUrl: `https://${SHELF_REPO_OWNER.toLowerCase()}.github.io/steady-shelf/`,
     stage: {
       appBase: STEADY_BASE,
+      shelfBase: '/steady-shelf/',
       appTitle: 'SteadyReader',
       companion: 'shelf-install.html',
       dropFiles: ['install.html'],
