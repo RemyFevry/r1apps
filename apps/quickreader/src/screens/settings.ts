@@ -1,4 +1,4 @@
-import { FONT_ORDER, PACING_ORDER, attachInputs, createRowList } from 'r1-kit'
+import { FONT_ORDER, PACING_ORDER, attachInputs, createRowList, type Settings } from 'r1-kit'
 import type { Ctx } from '../main'
 
 interface Row {
@@ -13,8 +13,9 @@ function cycle<T>(order: T[], current: T): T {
   return order[(order.indexOf(current) + 1) % order.length]
 }
 
-export function settingsScreen(ctx: Ctx): () => void {
-  const { root, storage, settings } = ctx
+export function settingsScreen(ctx: Ctx, initial: Settings): () => void {
+  const { root, storage } = ctx
+  const settings: Settings = { ...initial }
 
   const rows: Row[] = [
     {

@@ -1,10 +1,10 @@
 import { attachInputs, createRowList } from 'r1-kit'
-import type { Ctx } from '../main'
+import type { Ctx, Diagnostics } from '../main'
 
 const ROW_H = 46
 const VIEW_H = 236
 
-export function libraryScreen(ctx: Ctx): () => void {
+export function libraryScreen(ctx: Ctx, diag: Diagnostics): () => void {
   const { root, storage, nav } = ctx
   let metas: Awaited<ReturnType<typeof storage.listBooks>> = []
   let fracs = new Map<string, number>()
@@ -17,8 +17,8 @@ export function libraryScreen(ctx: Ctx): () => void {
   const brandText = document.createElement('span')
   brandText.textContent = 'QuickReader'
   const version = document.createElement('span')
-  const storageLabel = ctx.storageHealth === 'device' ? 'storage:device' : ctx.storageHealth === 'write-lost' ? 'storage:broken' : 'storage:memory'
-  version.textContent = ` · v${__APP_VERSION__} · ${storageLabel} · zip:${ctx.zipMode}`
+  const storageLabel = diag.storageHealth === 'device' ? 'storage:device' : diag.storageHealth === 'write-lost' ? 'storage:broken' : 'storage:memory'
+  version.textContent = ` · v${__APP_VERSION__} · ${storageLabel} · zip:${diag.zipMode}`
   version.style.color = 'var(--dim)'
   brand.append(brandText, version)
   screen.append(brand)

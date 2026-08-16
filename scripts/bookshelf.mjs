@@ -172,7 +172,7 @@ async function main() {
     if (!bundledFiles().length) die('no books bundled — add one first: pnpm bookshelf add <book.epub>')
     const ver = appVersion()
     console.log('building quickreader with bundled books …')
-    run('pnpm', ['--filter', APP, 'build'], { cwd: ROOT, env: { ...process.env, COMMIT_SHA: ver } })
+    run('pnpm', ['--filter', APP, 'build'], { cwd: ROOT, env: { ...process.env, BUILD_ID: ver } })
 
     const dist = join(ROOT, 'apps', APP, 'dist')
     const site = mkdtempSync(join(tmpdir(), 'r1-shelf-site-'))

@@ -69,7 +69,7 @@ describe('DeviceStorage', () => {
   })
 
   test('stores base64 unicode-safe books and updates the index', async () => {
-    const s = new DeviceStorage(fakeArea())
+    const s = new DeviceStorage(fakeArea(), 'quickreader')
     const b = book('x', 'Café ☕ 日本語')
     await s.saveBook(b)
     const raw = store.get('book:x')!
@@ -81,7 +81,7 @@ describe('DeviceStorage', () => {
   })
 
   test('positions in localStorage, delete clears them', async () => {
-    const s = new DeviceStorage(fakeArea())
+    const s = new DeviceStorage(fakeArea(), 'quickreader')
     await s.savePosition('x', { chapter: 0, wordIndex: 3, wpm: 300 })
     expect(ls.get('quickreader:pos:x')).toBe('{"chapter":0,"wordIndex":3,"wpm":300}')
     await s.saveSettings(settings)
@@ -94,7 +94,7 @@ describe('DeviceStorage', () => {
   })
 
   test('positions mirror to creationStorage and load falls back when localStorage is empty', async () => {
-    const s = new DeviceStorage(fakeArea())
+    const s = new DeviceStorage(fakeArea(), 'quickreader')
     await s.savePosition('x', { chapter: 2, wordIndex: 45, wpm: 350, frac: 0.3 })
     expect(store.has('pos:x')).toBe(true)
     ls.delete('quickreader:pos:x')
@@ -103,7 +103,7 @@ describe('DeviceStorage', () => {
 
   test('resolves creationStorage lazily — injection after construction still persists', async () => {
     let area: ReturnType<typeof fakeArea> | undefined
-    const s = new DeviceStorage(() => area)
+    const s = new DeviceStorage(() => area, 'quickreader')
     await s.saveBook(book('x', 'Late'))
     expect(await s.listBooks()).toEqual([{ id: 'x', title: 'Late', author: 'Jane', wordCount: 10, addedAt: 1000, sourceUrl: 'https://example.com/x.epub' }])
     expect(store.has('book:x')).toBe(false)
@@ -114,7 +114,7 @@ describe('DeviceStorage', () => {
   })
 
   test('without creationStorage, books survive within the session and positions still work', async () => {
-    const s = new DeviceStorage(() => undefined)
+    const s = new DeviceStorage(() => undefined, 'quickreader')
     await s.saveBook(book('x', 'Session'))
     expect((await s.listBooks()).map((m) => m.id)).toEqual(['x'])
     expect((await s.loadBook('x'))?.title).toBe('Session')
@@ -125,10 +125,23 @@ describe('DeviceStorage', () => {
   })
 
   test('settings mirror and fall back the same way', async () => {
-    const s = new DeviceStorage(fakeArea())
+    const s = new DeviceStorage(fakeArea(), 'quickreader')
     await s.saveSettings(settings)
     ls.delete('quickreader:settings')
     expect(await s.loadSettings()).toEqual(settings)
+  })
+
+  test('localStorage keys are namespaced per instance (#16)', async () => {
+    const a = new DeviceStorage(() => undefined, 'app-one')
+    const b = new DeviceStorage(() => undefined, 'app-two')
+    await a.savePosition('x', { chapter: 0, wordIndex: 1, wpm: 300 })
+    await b.savePosition('x', { chapter: 9, wordIndex: 9, wpm: 900 })
+    await a.saveSettings(settings)
+    expect(ls.get('app-one:pos:x')).toBe('{"chapter":0,"wordIndex":1,"wpm":300}')
+    expect(ls.get('app-two:pos:x')).toBe('{"chapter":9,"wordIndex":9,"wpm":900}')
+    expect(ls.has('app-one:settings')).toBe(true)
+    expect(ls.has('app-two:settings')).toBe(false)
+    expect(await a.loadPosition('x')).toEqual({ chapter: 0, wordIndex: 1, wpm: 300 })
   })
 })
 

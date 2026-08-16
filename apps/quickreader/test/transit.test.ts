@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { decodeTransitRef, encodeTransitRef, rawUrlToTransitCode, transitRawUrl } from '../src/ingestion/transit'
+import { decodeTransitRef, encodeTransitRef, rawUrlToTransitCode, transitRawUrl } from '../src/deeplink/transit'
 
 describe('transit ref', () => {
   test('round-trips and produces slash-free codes', () => {

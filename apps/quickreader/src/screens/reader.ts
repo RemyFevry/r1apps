@@ -3,13 +3,14 @@ import {
   createRowList,
   installPayload,
   renderQr,
+  THEME,
   type Settings,
   type BookRecord,
 } from 'r1-kit'
 import { createPlayback, type Playback, type PlaybackHudKind, type PlaybackSnapshot } from '../engine/playback'
 import { orpIndex } from '../engine/rsvp'
 import { formatDuration } from '../engine/time'
-import { bookmarkUrl } from '../ingestion/bookmark'
+import { bookmarkUrl } from '../deeplink/bookmark'
 import {
   indexRowKind,
   initialOverlayState,
@@ -44,8 +45,8 @@ function hudText(book: BookRecord, kind: PlaybackHudKind, s: PlaybackSnapshot): 
   }
 }
 
-export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
-  const { root, storage, settings, nav } = ctx
+export function readerScreen(ctx: Ctx, book: BookRecord, settings: Settings): () => void {
+  const { root, storage, nav } = ctx
 
   let pb: Playback | null = null
   let unmounted = false
@@ -182,9 +183,9 @@ export function readerScreen(ctx: Ctx, book: BookRecord): () => void {
       qrBox,
       installPayload({
         title: 'QuickReader bookmark',
-        url: bookmarkUrl(base, __COMMIT_SHA__, { id: book.id, chapter: s.chapter, wordIndex: s.wordIndex, wpm: s.wpm }),
+        url: bookmarkUrl(base, __BUILD_ID__, { id: book.id, chapter: s.chapter, wordIndex: s.wordIndex, wpm: s.wpm }),
         description: 'Resume reading',
-        themeColor: '#FE5000',
+        themeColor: THEME.accent,
       }),
       180,
     )

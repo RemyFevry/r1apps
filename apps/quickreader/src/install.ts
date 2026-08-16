@@ -1,9 +1,10 @@
-import { installPayload, renderQr } from 'r1-kit'
-import { decodeTransitRef, rawUrlToTransitCode, transitRawUrl } from './ingestion/transit'
+import { THEME, installPayload, renderQr } from 'r1-kit'
+import { decodeBookParam } from './deeplink/params'
+import { rawUrlToTransitCode } from './deeplink/transit'
 
-const themeColor = '#FE5000'
+const themeColor = THEME.accent
 const appUrl = new URL('.', location.href).href
-const versionedUrl = `${appUrl}?v=${__COMMIT_SHA__}`
+const versionedUrl = `${appUrl}?v=${__BUILD_ID__}`
 
 const installQr = document.getElementById('install-qr') as HTMLElement
 const bookQr = document.getElementById('book-qr') as HTMLElement
@@ -49,12 +50,7 @@ makeQr.addEventListener('click', () => {
 })
 
 const params = new URLSearchParams(location.search)
-const prefill = params.get('book') ?? (() => {
-  const code = params.get('b')
-  if (!code) return null
-  const ref = decodeTransitRef(code)
-  return ref ? transitRawUrl(ref) : null
-})()
+const prefill = decodeBookParam(params, 'book')
 if (prefill && /^https?:\/\//i.test(prefill)) {
   bookUrl.value = prefill
   generateBookQr(prefill)

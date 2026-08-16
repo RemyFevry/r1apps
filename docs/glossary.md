@@ -31,7 +31,7 @@ decisions make them sharp.
   `savePosition`/`loadPosition`/`saveSettings`/`loadSettings`) with two adapters:
   on-device (creationStorage + localStorage) and in-memory for tests/desktop (ADR-0003).
 - **install.html** — QR companion page per app: renders the install QR and, for
-  QuickReader, book deep-link QRs; `?v=<sha>` cache-busting injected at deploy (ADR-0004).
+  QuickReader, book deep-link QRs; `?v=<build id>` cache-busting injected at build (semver on shelf builds, commit SHA on CI) (ADR-0004).
 - **r1-kit** — the shared monorepo package: R1 input events (with keyboard fallbacks),
   storage seam + adapters, screen/theme constants, row list controller
   (`createRowList`: navigation + windowing + DOM sync, ADR-0004), QR-page generator,

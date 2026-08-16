@@ -22,6 +22,6 @@ export function decodeBookmark(s: string): Bookmark | null {
   return { id, chapter, wordIndex, wpm: w }
 }
 
-export function bookmarkUrl(baseUrl: string, sha: string, b: Bookmark): string {
-  return `${baseUrl}?v=${sha}#p=${encodeBookmark(b)}`
+export function bookmarkUrl(baseUrl: string, buildId: string, b: Bookmark): string {
+  return `${baseUrl}?v=${buildId}#p=${encodeBookmark(b)}`
 }

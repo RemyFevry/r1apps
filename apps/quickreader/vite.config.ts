@@ -29,7 +29,7 @@ function smallSha(s: string): string {
 export default defineConfig({
   base: '/r1apps/quickreader/',
   define: {
-    __COMMIT_SHA__: JSON.stringify(process.env.COMMIT_SHA ?? 'dev'),
+    __BUILD_ID__: JSON.stringify(process.env.BUILD_ID ?? 'dev'),
     __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync(join(here, 'package.json'), 'utf8')).version),
     __BUNDLED_BOOKS__: JSON.stringify(bundledBooks),
     __BUNDLED_BOOKS_SHA__: JSON.stringify(smallSha(bundledSha)),

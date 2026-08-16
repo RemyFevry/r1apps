@@ -1,8 +1,8 @@
 import './style.css'
 import { DEFAULT_SETTINGS, FONT, SCREEN, THEME, createStorage, inflateMode, probeDeviceStorage, type BookRecord, type InflateMode, type Settings, type Storage, type StorageHealth } from 'r1-kit'
-import { decodeBookmark } from './ingestion/bookmark'
+import { decodeBookmark } from './deeplink/bookmark'
+import { decodeBookParam } from './deeplink/params'
 import { ShelfStorage } from './ingestion/shelf'
-import { decodeTransitRef, transitRawUrl } from './ingestion/transit'
 import { ingestionScreen } from './screens/ingestion-screen'
 import { libraryScreen } from './screens/library'
 import { readerScreen } from './screens/reader'
@@ -18,17 +18,18 @@ export interface Nav {
 export interface Ctx {
   root: HTMLElement
   storage: Storage
-  settings: Settings
   nav: Nav
+}
+
+/** Boot-time platform facts — only the library screen displays them (#16). */
+export interface Diagnostics {
   storageHealth: StorageHealth
   zipMode: InflateMode
 }
 
 const app = document.getElementById('app') as HTMLElement
-const storage: Storage = new ShelfStorage(__BUNDLED_BOOKS__, __BUNDLED_BOOKS_SHA__, createStorage())
-const settings: Settings = { ...DEFAULT_SETTINGS }
-let storageHealth: StorageHealth = 'absent'
-let zipMode: InflateMode = 'fflate'
+const storage: Storage = new ShelfStorage(__BUNDLED_BOOKS__, __BUNDLED_BOOKS_SHA__, createStorage('quickreader'))
+const diag: Diagnostics = { storageHealth: 'absent', zipMode: 'fflate' }
 
 let cleanup: (() => void) | null = null
 
@@ -52,22 +53,25 @@ function show(mount: (ctx: Ctx) => () => void): void {
   app.replaceChildren()
   const root = document.createElement('div')
   app.append(root)
-  cleanup = mount({ root, storage, settings, nav, storageHealth, zipMode })
+  cleanup = mount({ root, storage, nav })
+}
+
+/** Settings travel by value through the storage interface, not a shared mutable ref (#16). */
+function currentSettings(): Promise<Settings> {
+  return storage.loadSettings().then((s) => ({ ...DEFAULT_SETTINGS, ...(s ?? {}) }))
 }
 
 const nav: Nav = {
-  library: () => show((ctx) => libraryScreen(ctx)),
-  openBook: (book) => show((ctx) => readerScreen(ctx, book)),
+  library: () => show((ctx) => libraryScreen(ctx, diag)),
+  openBook: (book) => void currentSettings().then((settings) => show((ctx) => readerScreen(ctx, book, settings))),
   addBook: () => show((ctx) => ingestionScreen(ctx)),
-  settings: () => show((ctx) => settingsScreen(ctx)),
+  settings: () => void currentSettings().then((settings) => show((ctx) => settingsScreen(ctx, settings))),
 }
 
 async function boot(): Promise<void> {
   applyPlatform()
-  const saved = await storage.loadSettings()
-  Object.assign(settings, saved ?? DEFAULT_SETTINGS)
-  storageHealth = await probeDeviceStorage()
-  zipMode = await inflateMode()
+  diag.storageHealth = await probeDeviceStorage()
+  diag.zipMode = await inflateMode()
   const hash = /#p=([A-Za-z0-9._-]+)/.exec(location.hash)
   const bookmark = hash ? decodeBookmark(hash[1]) : null
   if (bookmark) {
@@ -78,17 +82,12 @@ async function boot(): Promise<void> {
         wordIndex: bookmark.wordIndex,
         wpm: bookmark.wpm,
       })
-      show((ctx) => readerScreen(ctx, book))
+      const settings = await currentSettings()
+      show((ctx) => readerScreen(ctx, book, settings))
       return
     }
   }
-  const params = new URLSearchParams(location.search)
-  const add = params.get('add') ?? (() => {
-    const code = params.get('b')
-    if (!code) return null
-    const ref = decodeTransitRef(code)
-    return ref ? transitRawUrl(ref) : null
-  })()
+  const add = decodeBookParam(new URLSearchParams(location.search), 'add')
   if (add) show((ctx) => ingestionScreen(ctx, add))
   else nav.library()
 }
