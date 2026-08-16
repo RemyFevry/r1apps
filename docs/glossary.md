@@ -30,6 +30,47 @@ decisions make them sharp.
   on-device (creationStorage + localStorage) and in-memory for tests/desktop (ADR-0003).
 - **install.html** — QR companion page per app: renders the install QR and, for
   QuickReader, book deep-link QRs; `?v=<sha>` cache-busting injected at deploy (ADR-0004).
+- **Bimodal reading** — seeing and hearing the same text simultaneously: running text
+  with the current phrase and word highlighted while TTS speaks (ADR-0006).
+- **Silent mode** — the reader's base mode: WPM clock drives the highlight, no TTS
+  (ADR-0006).
+- **Voiced mode** — audio toggle on: the voice is the clock, highlight follows TTS
+  word-boundary events; WPM maps to the TTS rate multiplier (ADR-0006).
+- **Voice clock** — the rule that exactly one pacing authority runs: the WPM timer in
+  silent mode, the TTS engine in voiced mode; never both (ADR-0006).
+- **Phrase** — in the bimodal reader, the whole sentence: the unit highlighted around
+  the current word (ADR-0007).
+- **Anchor line** — the fixed vertical position the reading pane scrolls to so the
+  current word always sits there (ADR-0007).
+- **Shaped dwell** — silent-mode word duration: `60000/WPM` scaled by punctuation
+  and word length, mirroring natural speech rhythm (ADR-0007).
+- **Structured document** — the r1-kit parsing artifact: chapters → paragraphs →
+  sentences; the common input to both readers (ADR-0008).
+- **SteadyReader** — the bimodal read-along app (`apps/steadyreader/`): phrase/word
+  highlight, WPM auto-advance, synced TTS (ADRs 0006–0010).
+- **Article** — an extracted web page normalized into the structured document:
+  title as book metadata, H2/H3 sections as chapters (ADR-0009).
+- **audioOn** — the audio-toggle state persisted with Position; resumes as saved
+  (ADR-0009).
+- **Sentence nav** — scroll-wheel movement by sentence while paused (ADR-0010).
+- **TTS seam** — the one engine interface `speak(sentence, rate) → word-timing
+  events + audio`; three adapters sit behind it (ADR-0011).
+- **In-browser TTS** — the experimental leg: HuggingFace models (Kokoro/SpeechT5)
+  run by transformers.js inside the R1 webview itself (ADR-0011).
+- **Proportional word estimate** — derived timing for engines without boundary
+  events: char-weighted split of a sentence's real audio duration, re-anchored
+  every sentence (ADR-0011).
+- **Simulated voice clock** — the bridge leg's highlight timing: char-weighted
+  estimates *of the voice's* pace, EMA-calibrated, re-anchored each sentence;
+  WPM inert while voiced there (ADR-0012).
+- **Never-skip hold** — when audio isn't ready or its completion isn't confirmed,
+  the highlight waits behind the generating/speaking indicator; a read-along
+  never silently drops or outruns text (ADRs 0011, 0012).
+- **Sentence cache** — persistent (voice, speed, sentence-text hash) → audio +
+  timestamps store for the ElevenLabs leg; re-reads and back-jumps cost zero
+  credits; LRU-capped (ADR-0012).
+- **Sentence-start rule** — any entry into voiced mode speaks the current sentence
+  from its start; entry into silent mode resumes at the current word (ADR-0012).
 - **r1-kit** — the shared monorepo package: R1 input events (with keyboard fallbacks),
   storage seam + adapters, screen/theme constants, list controller, QR-page generator,
   closeWebView helper (ADR-0004).
