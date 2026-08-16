@@ -1,4 +1,4 @@
-import { fromB64, toB64, type CreationStorageArea, type DocChapter, type FontSize, type Pacing } from 'r1-kit'
+import { fromB64, probeDeviceStorage, toB64, type CreationStorageArea, type DocChapter, type FontSize, type Pacing, type StorageHealth, type StorageProbeResult } from 'r1-kit'
 
 export type DocKind = 'epub' | 'article'
 
@@ -54,6 +54,8 @@ export interface DocStorage {
   loadPosition(id: string): Promise<DocPosition | null>
   saveSettings(s: SteadySettings): Promise<void>
   loadSettings(): Promise<SteadySettings | null>
+  /** What this adapter actually guarantees, per kind of data (r1-kit #13 pattern). */
+  health(): StorageHealth
 }
 
 const DOC_PREFIX = 'doc:'
@@ -66,8 +68,22 @@ const CS_SETTINGS_KEY = 'settings'
 export class DeviceDocStorage implements DocStorage {
   private memDocs = new Map<string, DocRecord>()
   private memIndex: DocMeta[] = []
+  private probeResult: StorageProbeResult | null = null
 
   constructor(private cs: CreationStorageArea | (() => CreationStorageArea | undefined)) {}
+
+  health(): StorageHealth {
+    const area = this.area()
+    if (!area) return { books: 'session', progress: 'session' }
+    if (this.probeResult == null) {
+      void probeDeviceStorage(() => area).then((r) => {
+        this.probeResult = r
+      })
+      return { books: 'device', progress: 'session' } // optimistic until the probe lands
+    }
+    if (this.probeResult === 'write-lost') return { books: 'write-lost', progress: 'session' }
+    return { books: 'device', progress: this.probeResult === 'device' ? 'device' : 'session' }
+  }
 
   private area(): CreationStorageArea | undefined {
     return typeof this.cs === 'function' ? this.cs() : this.cs
@@ -223,6 +239,10 @@ export class MemoryDocStorage implements DocStorage {
 
   async loadSettings(): Promise<SteadySettings | null> {
     return this.settings
+  }
+
+  health(): StorageHealth {
+    return { books: 'session', progress: 'session' }
   }
 }
 

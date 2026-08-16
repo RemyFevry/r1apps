@@ -1,4 +1,4 @@
-import { attachInputs, buildChapterIndex, createListNav, formatDuration, visibleWindow, type ChapterIndex, type DocChapter } from 'r1-kit'
+import { attachInputs, buildChapterIndex, createRowList, formatDuration, type ChapterIndex, type DocChapter } from 'r1-kit'
 import { createReadAlong, type ReadAlong, type ReadAlongHudKind, type ReadAlongSnapshot, type TtsVoice } from '../engine/readalong'
 import { wpmToSpeed } from '../tts/eleven'
 import type { Ctx, DocRecord } from '../main'
@@ -144,7 +144,7 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
   }
 
   let chapterEl: HTMLElement | null = null
-  let chapterNav: ReturnType<typeof createListNav> | null = null
+  let chapterList: ReturnType<typeof createRowList> | null = null
   const ROW = 36
 
   function showChapterIndex(): void {
@@ -160,40 +160,32 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
     k.className = 'k'
     k.textContent = 'Navigate'
     k.style.marginBottom = '8px'
-    const list = document.createElement('div')
-    list.style.width = '100%'
-    list.style.overflow = 'hidden'
     const hint = document.createElement('div')
     hint.className = 'status'
     hint.textContent = 'scroll = move · side = open · hold = back'
     hint.style.marginTop = '8px'
-    el.append(k, list, hint)
+    el.append(k, hint)
 
-    chapterNav = createListNav({
+    chapterList = createRowList({
       count: rowsCount,
-      onChange: () => {
-        list.replaceChildren()
-        const win = visibleWindow(chapterNav!.selected, rowsCount(), ROW, 200)
-        for (let i = win.start; i < win.end; i++) {
-          const row = document.createElement('div')
-          row.className = 'row' + (i === chapterNav!.selected ? ' selected' : '')
-          row.style.height = ROW + 'px'
-          const t = document.createElement('div')
-          t.className = 't'
-          if (isLibraryRow(i)) {
-            t.className = 't pinned'
-            t.textContent = 'Library'
-          } else {
-            const c = doc.chapters[i]
-            t.textContent = `${i + 1}. ${c.title}`
-            if (i === ra?.snapshot().chapter) t.style.color = 'var(--accent)'
-          }
-          row.append(t)
-          list.append(row)
+      rowHeight: ROW,
+      viewHeight: 200,
+      renderRow(row, i) {
+        const t = document.createElement('div')
+        t.className = 't'
+        if (isLibraryRow(i)) {
+          t.className = 't pinned'
+          t.textContent = 'Library'
+        } else {
+          const c = doc.chapters[i]
+          t.textContent = `${i + 1}. ${c.title}`
+          if (i === ra?.snapshot().chapter) t.style.color = 'var(--accent)'
         }
+        row.append(t)
       },
     })
-    chapterNav.jumpTo(ra?.snapshot().chapter ?? 0)
+    el.insertBefore(chapterList.el, hint)
+    chapterList.selected = ra?.snapshot().chapter ?? 0
     root.append(el)
     chapterEl = el
   }
@@ -201,7 +193,7 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
   function hideChapterIndex(): void {
     chapterEl?.remove()
     chapterEl = null
-    chapterNav = null
+    chapterList = null
   }
 
   const flush = () => ra?.flush()
@@ -214,7 +206,7 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
   const detach = attachInputs({
     onSideClick() {
       if (chapterEl) {
-        const sel = chapterNav!.selected
+        const sel = chapterList!.selected
         if (sel === doc.chapters.length) {
           hideChapterIndex()
           exit()
@@ -242,7 +234,7 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
     onLongPressEnd() {},
     onScrollUp() {
       if (chapterEl) {
-        chapterNav!.up()
+        chapterList!.up()
         return
       }
       if (live()) ra?.setWpm(-10)
@@ -250,7 +242,7 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
     },
     onScrollDown() {
       if (chapterEl) {
-        chapterNav!.down()
+        chapterList!.down()
         return
       }
       if (live()) ra?.setWpm(10)

@@ -6,7 +6,7 @@ renderQr(
   document.getElementById('install-qr') as HTMLElement,
   installPayload({
     title: 'SteadyReader',
-    url: `${appUrl}?v=${__COMMIT_SHA__}`,
+    url: `${appUrl}?v=${__BUILD_ID__}`,
     description: 'Read-along reader — see and hear',
     themeColor: '#FE5000',
   }),

@@ -1,14 +1,14 @@
 import './style.css'
-import { FONT, SCREEN, THEME, inflateMode, probeDeviceStorage, type InflateMode, type StorageHealth } from 'r1-kit'
+import { FONT, SCREEN, THEME } from 'r1-kit'
 import { createBridgeVoice } from './tts/bridge'
 import { createElevenVoice, defaultElevenDeps, type ElevenVoice } from './tts/eleven'
 import { createDocStorage, DEFAULT_STEADY_SETTINGS, type DocRecord, type DocStorage, type SteadySettings } from './store'
-
-export type { DocRecord } from './store'
 import { addDocScreen } from './screens/adddoc'
 import { libraryScreen } from './screens/library'
 import { readerScreen } from './screens/reader'
 import { settingsScreen } from './screens/settings'
+
+export type { DocRecord } from './store'
 
 export interface Nav {
   library(): void
@@ -27,16 +27,12 @@ export interface Ctx {
   storage: DocStorage
   settings: SteadySettings
   nav: Nav
-  storageHealth: StorageHealth
-  zipMode: InflateMode
   tts: TtsCtx
 }
 
 const app = document.getElementById('app') as HTMLElement
 const storage: DocStorage = createDocStorage()
 const settings: SteadySettings = { ...DEFAULT_STEADY_SETTINGS }
-let storageHealth: StorageHealth = 'absent'
-let zipMode: InflateMode = 'fflate'
 
 const tts: TtsCtx = {
   rabbit: createBridgeVoice(),
@@ -65,7 +61,7 @@ function show(mount: (ctx: Ctx) => () => void): void {
   app.replaceChildren()
   const root = document.createElement('div')
   app.append(root)
-  cleanup = mount({ root, storage, settings, nav, storageHealth, zipMode, tts })
+  cleanup = mount({ root, storage, settings, nav, tts })
 }
 
 const nav: Nav = {
@@ -79,8 +75,6 @@ async function boot(): Promise<void> {
   applyPlatform()
   const saved = await storage.loadSettings()
   Object.assign(settings, saved ?? DEFAULT_STEADY_SETTINGS)
-  storageHealth = await probeDeviceStorage()
-  zipMode = await inflateMode()
   if (settings.elevenKey) {
     // Rachel: ElevenLabs' canonical default premade voice; swappable in Settings.
     tts.eleven = createElevenVoice(

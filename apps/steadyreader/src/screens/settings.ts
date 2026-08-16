@@ -1,4 +1,4 @@
-import { FONT_ORDER, PACING_ORDER, attachInputs, createListNav } from 'r1-kit'
+import { FONT_ORDER, PACING_ORDER, attachInputs, createRowList } from 'r1-kit'
 import type { SteadySettings } from '../store'
 import type { Ctx } from '../main'
 
@@ -67,27 +67,16 @@ export function settingsScreen(ctx: Ctx): () => void {
   const brand = document.createElement('div')
   brand.className = 'brand'
   brand.textContent = 'Settings'
-  const list = document.createElement('div')
-  list.className = 'rows'
-  screen.append(brand, list)
+  screen.append(brand)
   root.append(screen)
 
   const total = () => rows.length + 1
 
-  const nav = createListNav({
+  const list = createRowList({
     count: total,
-    onChange: () => render(),
-  })
-
-  function persist(): void {
-    void storage.saveSettings({ ...settings }).catch(() => {})
-  }
-
-  function render(): void {
-    list.replaceChildren()
-    for (let i = 0; i < total(); i++) {
-      const row = document.createElement('div')
-      row.className = 'row' + (i === nav.selected ? ' selected' : '')
+    className: 'rows',
+    rowHeight: 46,
+    renderRow(row, i) {
       const t = document.createElement('div')
       const s = document.createElement('div')
       s.className = 's'
@@ -100,8 +89,12 @@ export function settingsScreen(ctx: Ctx): () => void {
         t.textContent = 'Done'
       }
       row.append(t, s)
-      list.append(row)
-    }
+    },
+  })
+  screen.append(list.el)
+
+  function persist(): void {
+    void storage.saveSettings({ ...settings }).catch(() => {})
   }
 
   function done(): void {
@@ -111,10 +104,10 @@ export function settingsScreen(ctx: Ctx): () => void {
 
   const detach = attachInputs({
     onSideClick() {
-      if (nav.selected < rows.length) {
-        rows[nav.selected].act()
+      if (list.selected < rows.length) {
+        rows[list.selected].act()
         persist()
-        render()
+        list.render()
       } else {
         done()
       }
@@ -123,10 +116,9 @@ export function settingsScreen(ctx: Ctx): () => void {
       done()
     },
     onLongPressEnd() {},
-    onScrollUp: nav.up,
-    onScrollDown: nav.down,
+    onScrollUp: list.up,
+    onScrollDown: list.down,
   })
 
-  render()
   return detach
 }
