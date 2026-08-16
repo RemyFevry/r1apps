@@ -118,7 +118,15 @@ function die(msg) {
 }
 
 function run(cmd, args, opts = {}) {
-  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opts }).trim()
+  const { ok = false, ...rest } = opts
+  if (ok) {
+    try {
+      return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], ...rest }).trim()
+    } catch {
+      return ''
+    }
+  }
+  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...rest }).trim()
 }
 
 function appVersion() {
@@ -257,20 +265,24 @@ async function main() {
       run('git', ['remote', 'add', 'origin', `https://github.com/${SHELF_REPO}.git`], { cwd: stage })
       if (!created) {
         // Prior version artifacts carry forward: every v/<ver>/ ever synced stays served.
-        run('git', ['pull', '--ff-only', 'origin', 'main'], { cwd: stage })
-        if (shippedVersion(stage, ver)) {
-          die(`v/${ver}/ is already shipped and immutable — bump first: pnpm bookshelf bump <major|minor|patch>`)
-        }
-        if (!existsSync(join(stage, 'v'))) {
-          // One-time migration: the pre-versioning root build becomes v/<its ver>/.
-          const priorMsg = run('git', ['log', '-1', '--format=%s'], { cwd: stage })
-          const priorVer = /v=([A-Za-z0-9]+)/.exec(priorMsg)?.[1] ?? 'pre-versioning'
-          mkdirSync(join(stage, 'v', priorVer), { recursive: true })
-          for (const e of readdirSync(stage)) {
-            if (e === 'v' || e === '.git' || e === '.github') continue
-            renameSync(join(stage, e), join(stage, 'v', priorVer, e))
+        // An empty shelf repo (created out-of-band, never pushed) has no main yet — treat as fresh.
+        const fresh = run('git', ['ls-remote', '--heads', 'origin', 'main'], { cwd: stage, ok: true }) === ''
+        if (!fresh) {
+          run('git', ['pull', '--ff-only', 'origin', 'main'], { cwd: stage })
+          if (shippedVersion(stage, ver)) {
+            die(`v/${ver}/ is already shipped and immutable — bump first: pnpm bookshelf bump <major|minor|patch>`)
           }
-          console.log(`migrated existing root build to v/${priorVer}/ (now immutable)`)
+          if (!existsSync(join(stage, 'v'))) {
+            // One-time migration: the pre-versioning root build becomes v/<its ver>/.
+            const priorMsg = run('git', ['log', '-1', '--format=%s'], { cwd: stage })
+            const priorVer = /v=([A-Za-z0-9]+)/.exec(priorMsg)?.[1] ?? 'pre-versioning'
+            mkdirSync(join(stage, 'v', priorVer), { recursive: true })
+            for (const e of readdirSync(stage)) {
+              if (e === 'v' || e === '.git' || e === '.github') continue
+              renameSync(join(stage, e), join(stage, 'v', priorVer, e))
+            }
+            console.log(`migrated existing root build to v/${priorVer}/ (now immutable)`)
+          }
         }
       }
 
