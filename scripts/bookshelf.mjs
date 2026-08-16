@@ -11,7 +11,10 @@
 // the R1 mangles long URLs. Bundled builds put the pre-extracted word streams
 // inside the app itself — no fetch, no CORS, no URL limits, no on-device
 // parsing. Each sync lands at an immutable v/<ver>/ path (kept forever) and
-// refreshes the root to the latest build. See docs/adr/0001 (amendments).
+// refreshes the root to the latest build. Hosted under RemyFevry (the
+// remy-agent account's Pages serving was blocked account-wide on 2026-08-16 —
+// deployments succeeded but every URL returned "Site not found"). See
+// docs/adr/0001 (amendments).
 
 import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -22,7 +25,7 @@ import { Window } from 'happy-dom'
 const ROOT = resolve(import.meta.dirname, '..')
 const BOOKS_DIR = join(ROOT, 'apps/quickreader/books')
 const APP = 'quickreader'
-const SHELF_REPO_OWNER = 'remyf-agent'
+const SHELF_REPO_OWNER = 'RemyFevry'
 const SHELF_REPO = `${SHELF_REPO_OWNER}/r1-shelf`
 const SHELF_URL = `https://${SHELF_REPO_OWNER}.github.io/r1-shelf/`
 const SHELF_BASE = '/r1-shelf/'

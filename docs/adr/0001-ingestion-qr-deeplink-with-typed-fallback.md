@@ -65,10 +65,14 @@ exact URL that failed.
 root build, so a `?v=<ver>` rescan URL was only a cache-buster — after the next
 sync it silently served whatever shipped last, and the build a card (or bug
 report quoting `v=`) actually ran became unrecoverable. Each sync now lands at
-an immutable `v/<ver>/` path (incremental pushes accumulate versions in
-`remyf-agent/r1-shelf`, ~1 MB each) and refreshes the root to the latest
-build. Versioned QR URLs are permanent; the pre-versioning root build was
-migrated to its own `v/<ver>/` on first run of the new sync.
+an immutable `v/<ver>/` path (incremental pushes accumulate versions in the
+shelf repo, ~1 MB each) and refreshes the root to the latest build. Versioned
+QR URLs are permanent; the pre-versioning root build was migrated to its own
+`v/<ver>/` on first run of the new sync. Same day: the shelf moved from
+`remyf-agent/r1-shelf` to `RemyFevry/r1-shelf` — the remy-agent account's
+Pages serving was blocked account-wide (deployments reported success but every
+URL returned "Site not found", reproduced on a fresh probe repo); the history
+and all `v/<ver>/` artifacts were mirrored to the new home unchanged.
 
 ## Consequences
 
