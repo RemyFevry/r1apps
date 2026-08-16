@@ -36,3 +36,10 @@ decisions make them sharp.
   storage seam + adapters, screen/theme constants, row list controller
   (`createRowList`: navigation + windowing + DOM sync, ADR-0004), QR-page generator,
   closeWebView helper (ADR-0004).
+- **R1 compatibility gate** — the CI sequence every push/PR must pass before
+  anything can deploy: `chrome103` build target, post-build static scan
+  (`r1:compat`), device-sim smoke (`r1:smoke`). Device profile constants live in
+  `r1.config.mjs`; decision record in ADR-0006.
+- **Device-sim smoke** — Playwright Chromium at 240×282 with
+  `creationStorage`/`closeWebView` mocked, driving an app through R1 hardware
+  events; fails on console errors or horizontal overflow (ADR-0006).

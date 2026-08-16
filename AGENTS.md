@@ -26,7 +26,8 @@ pnpm verify          # typecheck + test + build + r1:compat + r1:smoke
 
 Vite build targets are locked to the same floor (`build.target` imports from
 `r1.config.mjs`), so syntax the webview can't parse fails the build. New apps
-copied from `apps/_template` inherit all of this.
+copied from `apps/_template` inherit all of this. Full decision record:
+docs/adr/0006-r1-compatibility-gate-ci.md.
 
 ## Agent skills
 
