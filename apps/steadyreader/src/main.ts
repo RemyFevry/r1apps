@@ -19,7 +19,7 @@ export interface Nav {
 
 export interface TtsCtx {
   rabbit: ReturnType<typeof createBridgeVoice>
-  eleven: ElevenVoice
+  eleven: ElevenVoice | null
 }
 
 export interface Ctx {
@@ -40,10 +40,7 @@ let zipMode: InflateMode = 'fflate'
 
 const tts: TtsCtx = {
   rabbit: createBridgeVoice(),
-  eleven: createElevenVoice(
-    { key: '', voiceId: '' },
-    defaultElevenDeps(),
-  ),
+  eleven: null,
 }
 
 let cleanup: (() => void) | null = null
@@ -84,8 +81,12 @@ async function boot(): Promise<void> {
   Object.assign(settings, saved ?? DEFAULT_STEADY_SETTINGS)
   storageHealth = await probeDeviceStorage()
   zipMode = await inflateMode()
-  if (settings.elevenKey && settings.elevenVoice) {
-    tts.eleven = createElevenVoice({ key: settings.elevenKey, voiceId: settings.elevenVoice }, defaultElevenDeps())
+  if (settings.elevenKey) {
+    // Rachel: ElevenLabs' canonical default premade voice; swappable in Settings.
+    tts.eleven = createElevenVoice(
+      { key: settings.elevenKey, voiceId: settings.elevenVoice || '21m00Tcm4TlvDq8ikWAM' },
+      defaultElevenDeps(),
+    )
   }
   const params = new URLSearchParams(location.search)
   const add = params.get('add')

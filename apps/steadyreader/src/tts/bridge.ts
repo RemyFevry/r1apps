@@ -1,3 +1,4 @@
+import { endsClause, endsSentence } from 'r1-kit'
 import type { TtsSpeakOptions, TtsVoice } from '../engine/readalong'
 
 /**
@@ -32,14 +33,6 @@ const EVENTS_WATCHDOG_FACTOR = 3
 
 type Capability = 'unknown' | 'events' | 'estimate'
 
-function endsSentence(w: string): boolean {
-  return /[.!?…]["')\]»”’]*$/.test(w)
-}
-
-function endsClause(w: string): boolean {
-  return /[,;:—–]["')\]»”’]*$/.test(w)
-}
-
 function wordWeight(w: string): number {
   let weight = Math.max(Array.from(w).length, 1)
   if (endsSentence(w)) weight += SENTENCE_WEIGHT
@@ -68,16 +61,35 @@ function defaultSeams(): BridgeSeams {
     schedule: (fn, ms) => setTimeout(fn, ms),
     cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
     listen: (fn) => {
-      const wrapper = (e: Event): void => fn((e as MessageEvent).data)
-      window.addEventListener('message', wrapper)
+      const wrappers: Array<() => void> = []
+      const add = <K extends keyof WindowEventMap>(
+        type: K,
+        handler: (e: WindowEventMap[K]) => void,
+      ): void => {
+        const wrapper = (e: Event): void => handler(e as WindowEventMap[K])
+        window.addEventListener(type, wrapper)
+        wrappers.push(() => window.removeEventListener(type, wrapper))
+      }
+      add('message', (e) => fn(e.data))
+      // Community-observed variants dispatch DOM CustomEvents named like
+      // `r1:voice:end` rather than message payloads — cover that channel too.
+      const custom = (e: Event): void => {
+        if (!/voice/i.test(e.type) || !/end|finish|complete|stop/i.test(e.type)) return
+        const detail = (e as CustomEvent).detail
+        fn(JSON.stringify({ type: e.type, ...(typeof detail === 'object' && detail ? detail : {}) }))
+      }
+      window.addEventListener('r1:voice:end', custom)
+      wrappers.push(() => window.removeEventListener('r1:voice:end', custom))
       const prev = (window as unknown as { onPluginMessage?: (data: unknown) => void }).onPluginMessage
       ;(window as unknown as { onPluginMessage?: (data: unknown) => void }).onPluginMessage = (data) => {
         prev?.(data)
         fn(data)
       }
-      return () => {
-        window.removeEventListener('message', wrapper)
+      wrappers.push(() => {
         ;(window as unknown as { onPluginMessage?: (data: unknown) => void }).onPluginMessage = prev
+      })
+      return () => {
+        for (const off of wrappers) off()
       }
     },
     post: (payload) => {
@@ -138,6 +150,11 @@ export function createBridgeVoice(seams?: Partial<BridgeSeams>): BridgeVoice {
     u.ended = true
     if (reason === 'event') cap = 'events'
     else if (reason === 'watchdog' && cap === 'unknown') cap = 'estimate'
+    // EMA note: in estimate mode the watchdog fires at the estimate, so
+    // observed ≈ estimate and the EMA only self-reinforces — there is no end
+    // signal to learn from on this leg. Real learning happens on the events
+    // path (and from stop-timed lower bounds); estimate mode stays on the
+    // community default until then (ADR-0012 accepts this).
     if (reason !== 'stop') {
       const observed = (s.now() - u.startedAt) / Math.max(u.words.length, 1)
       msPerWord = msPerWord * (1 - EMA_ALPHA) + observed * EMA_ALPHA

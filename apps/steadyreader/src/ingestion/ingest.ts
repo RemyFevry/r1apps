@@ -14,8 +14,6 @@ export class IngestError extends Error {
   }
 }
 
-export type IngestedDoc = DocRecord
-
 export function docId(url: string): string {
   let h = 5381
   for (let i = 0; i < url.length; i++) h = ((h << 5) + h + url.charCodeAt(i)) >>> 0
@@ -27,7 +25,7 @@ function looksLikeHtml(text: string): boolean {
   return head.includes('<!doctype html') || head.includes('<html') || head.includes('<body') || head.includes('<head')
 }
 
-export async function ingestDocument(storage: DocStorage, url: string): Promise<IngestedDoc> {
+export async function ingestDocument(storage: DocStorage, url: string): Promise<DocRecord> {
   let u: URL
   try {
     u = new URL(url.trim())

@@ -13,11 +13,11 @@ export function baseDelay(wpm: number): number {
 }
 
 export function endsSentence(w: string): boolean {
-  return /[.!?…]["')\]»]*$/.test(w)
+  return /[.!?…]["')\]»”’]*$/.test(w)
 }
 
 export function endsClause(w: string): boolean {
-  return /[,;:—–]["')\]»]*$/.test(w)
+  return /[,;:—–]["')\]»”’]*$/.test(w)
 }
 
 function scaled(ms: number, mult: number, paceScale: number): number {

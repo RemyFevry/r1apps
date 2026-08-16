@@ -1,5 +1,5 @@
 import { FONT_ORDER, PACING_ORDER, attachInputs, createListNav } from 'r1-kit'
-import { DEFAULT_STEADY_SETTINGS, type EngineId, type SteadySettings } from '../store'
+import type { SteadySettings } from '../store'
 import type { Ctx } from '../main'
 
 interface Row {
@@ -41,7 +41,7 @@ export function settingsScreen(ctx: Ctx): () => void {
       label: 'Voice engine',
       value: () => (settings.engine === 'rabbit' ? 'r1 voice' : 'ElevenLabs'),
       act: () => {
-        settings.engine = (settings.engine === 'rabbit' ? 'elevenlabs' : 'rabbit') as EngineId
+        settings.engine = settings.engine === 'rabbit' ? 'elevenlabs' : 'rabbit'
       },
     },
     {

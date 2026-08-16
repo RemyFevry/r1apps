@@ -40,6 +40,7 @@ export type ReadAlongHudKind =
   | 'pause'
   | 'resume'
   | 'wpm'
+  | 'speaking'
   | 'audioOn'
   | 'audioOff'
   | 'chapterSeek'
@@ -53,7 +54,7 @@ export interface ReadAlongEvents {
 }
 
 /** Time and persistence seams, faked in tests. `save` is the single persistence path. */
-export interface TimeSeams {
+export interface ReadAlongSeams {
   save(pos: DocPosition): void
   now(): number
   schedule(fn: () => void, ms: number): unknown
@@ -63,6 +64,8 @@ export interface TimeSeams {
 export interface TtsSpeakOptions {
   /** The WPM dial at speak time; adapters map it their own way (ADR-0012). */
   wpm: number
+  /** The previous sentence's text, for prosody continuity (ADR-0012 prefetch). */
+  previousText?: string
   onWord(wordInSentence: number): void
 }
 
@@ -70,10 +73,12 @@ export interface TtsSpeakOptions {
  * The engine-facing half of the TTS seam (ADR-0011). `speak` resolves when the
  * utterance completes; a stalled engine simply never advances (never-skip,
  * ADR-0012). `stop` must settle any in-flight promise without side effects.
+ * `prewarm`, when present, prefetches the next sentence (lookahead).
  */
 export interface TtsVoice {
   speak(text: string, words: string[], opts: TtsSpeakOptions): Promise<void>
   stop(): void
+  prewarm?(text: string, wpm: number, previousText?: string): void
 }
 
 export interface ReadAlongOptions {
@@ -81,7 +86,7 @@ export interface ReadAlongOptions {
   initial: { chapter: number; wordIndex: number; wpm: number; audioOn: boolean }
   pacing: Pacing
   events: ReadAlongEvents
-  seams: TimeSeams
+  seams: ReadAlongSeams
   voice: TtsVoice
 }
 
@@ -126,8 +131,8 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
   let audioOn = opts.initial.audioOn
   let st: ReadAlongStatus = 'paused'
   let destroyed = false
-  let cardTimer: ReturnType<TimeSeams['schedule']> | null = null
-  let wordTimer: ReturnType<TimeSeams['schedule']> | null = null
+  let cardTimer: ReturnType<ReadAlongSeams['schedule']> | null = null
+  let wordTimer: ReturnType<ReadAlongSeams['schedule']> | null = null
   /** Words advanced since the last throttled save; NOT reset by pause or chapter boundary. */
   let sinceSave = 0
   /** Invalidates in-flight speak settlements after stop/seek/toggle. */
@@ -221,11 +226,17 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
     const at = sentenceAt(ci, wordIndex)
     wordIndex = ci.sentences[at.sentence].wordOffset
     const sent = ci.sentences[at.sentence]
+    const previousText = at.sentence > 0 ? ci.sentences[at.sentence - 1].text : undefined
     events.onWord?.(snapshot())
+    events.onHud?.('speaking', snapshot())
+    // Lookahead prefetch (ADR-0012): warm the next sentence while this one plays.
+    const next = ci.sentences[at.sentence + 1]
+    if (next) voice.prewarm?.(next.text, wpm, sent.text)
     const gen = ++speakGen
     void voice
       .speak(sent.text, sent.words.map((w) => w.text), {
         wpm,
+        previousText,
         onWord: (i) => {
           if (gen !== speakGen || destroyed || st !== 'playing') return
           const clamped = Math.min(Math.max(i, 0), sent.words.length - 1)

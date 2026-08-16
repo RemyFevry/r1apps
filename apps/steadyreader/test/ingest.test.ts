@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
 import { extractArticle, extractEpubDocument } from 'r1-kit'
-import { ingestDocument, ingestErrorMessage, IngestError, type IngestedDoc } from '../src/ingestion/ingest'
-import { MemoryDocStorage } from '../src/store'
+import { ingestDocument, ingestErrorMessage, IngestError } from '../src/ingestion/ingest'
+import { MemoryDocStorage, type DocRecord } from '../src/store'
 
 vi.mock('r1-kit', async (orig) => {
   const real = await orig<typeof import('r1-kit')>()
@@ -36,7 +36,7 @@ function res(bytes: Uint8Array | string, type: string): Response {
   return new Response(body.slice().buffer as ArrayBuffer, { headers: { 'content-type': type } })
 }
 
-async function run(fetchImpl: typeof fetch, url: string): Promise<IngestedDoc> {
+async function run(fetchImpl: typeof fetch, url: string): Promise<DocRecord> {
   vi.stubGlobal('fetch', fetchImpl)
   const storage = new MemoryDocStorage()
   const doc = await ingestDocument(storage, url)

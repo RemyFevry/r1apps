@@ -1,68 +1,39 @@
 import { describe, expect, test } from 'vitest'
 import type { DocChapter } from 'r1-kit'
+import { FakeClock } from './fakeClock'
 import {
   createReadAlong,
   type ReadAlong,
   type ReadAlongEvents,
   type ReadAlongHudKind,
+  type ReadAlongSeams,
   type ReadAlongSnapshot,
   type ReadAlongStatus,
-  type TimeSeams,
   type TtsSpeakOptions,
   type TtsVoice,
 } from '../src/engine/readalong'
 import type { DocPosition } from '../src/store'
 
-/** Manual virtual clock: schedule/cancel/now seams, advance fires tasks in order. */
-class FakeClock {
-  t = 0
-  private seq = 1
-  private tasks = new Map<number, { at: number; fn: () => void }>()
-
-  now(): number {
-    return this.t
-  }
-
-  schedule(fn: () => void, ms: number): number {
-    const id = this.seq++
-    this.tasks.set(id, { at: this.t + ms, fn })
-    return id
-  }
-
-  cancel(id: number): void {
-    this.tasks.delete(id)
-  }
-
-  advance(ms: number): void {
-    const target = this.t + ms
-    const EPS = 1e-6
-    for (;;) {
-      let best: { id: number; at: number; fn: () => void } | null = null
-      for (const [id, task] of this.tasks) {
-        if (task.at <= target + EPS && (!best || task.at < best.at)) best = { id, ...task }
-      }
-      if (!best) break
-      this.tasks.delete(best.id)
-      this.t = best.at
-      best.fn()
-    }
-    this.t = target
-  }
-}
-
 /** Scripted voice: tests drive onWord/finish by hand; stop settles the utterance. */
 class FakeVoice implements TtsVoice {
   texts: string[] = []
   wpms: number[] = []
+  previousTexts: Array<string | undefined> = []
+  prewarms: Array<{ text: string; wpm: number; previousText?: string }> = []
   stops = 0
   private utter: { opts: TtsSpeakOptions; done: () => void } | null = null
 
   speak(text: string, _words: string[], opts: TtsSpeakOptions): Promise<void> {
     this.texts.push(text)
     this.wpms.push(opts.wpm)
+    this.previousTexts.push(opts.previousText)
     return new Promise<void>((done) => {
       this.utter = { opts, done }
     })
+  }
+
+  prewarm(text: string, wpm: number, previousText?: string): void {
+    this.prewarms.push({ text, wpm, previousText })
   }
 
   stop(): void {
@@ -117,7 +88,7 @@ function harness(
   const statuses: ReadAlongStatus[] = []
   const huds: Array<{ kind: ReadAlongHudKind; s: ReadAlongSnapshot }> = []
   let exits = 0
-  const seams: TimeSeams = {
+  const seams: ReadAlongSeams = {
     save: (p) => saves.push({ ...p }),
     now: () => clock.now(),
     schedule: (fn, ms) => clock.schedule(fn, ms),
@@ -419,5 +390,15 @@ describe('voiced mode (ADR-0012: the voice is the clock)', () => {
     h.ra.destroy()
     expect(h.voice.stops).toBe(1)
     expect(h.saves.at(-1)).toMatchObject({ chapter: 0, wordIndex: 1, audioOn: true, wpm: 300 })
+  })
+
+  test('speaking emits a hud and prewarms the next sentence with previousText (ADR-0012 lookahead)', async () => {
+    const h = harness({ chapter: 0, wordIndex: 1, wpm: 300, audioOn: true })
+    expect(h.huds.some((x) => x.kind === 'speaking')).toBe(true)
+    expect(h.voice.previousTexts[0]).toBe('One.') // sentence 1's predecessor is sentence 0
+    expect(h.voice.prewarms).toEqual([{ text: 'Three words here.', wpm: 300, previousText: 'Two words.' }])
+    h.voice.finish()
+    await h.flush()
+    expect(h.voice.previousTexts[1]).toBe('Two words.')
   })
 })

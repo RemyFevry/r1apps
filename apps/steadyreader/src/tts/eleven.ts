@@ -69,7 +69,7 @@ export interface ElevenVoice extends TtsVoice {
   prewarm(text: string): Promise<void>
 }
 
-interface utterance {
+interface Utterance {
   stopped: boolean
   settle(): void
   fail(e: unknown): void
@@ -83,8 +83,8 @@ function djb2(s: string): string {
   return h.toString(36)
 }
 
-function cacheKey(voiceId: string, speed: number, text: string): string {
-  return `${voiceId}|${speed.toFixed(3)}|${djb2(text)}`
+function cacheKey(voiceId: string, speed: number, text: string, previousText?: string): string {
+  return `${voiceId}|${speed.toFixed(3)}|${djb2(text)}|${previousText ? djb2(previousText) : ''}`
 }
 
 function b64ToBuffer(b64: string): ArrayBuffer {
@@ -101,8 +101,8 @@ export function createElevenVoice(
   const model = opts.model ?? 'eleven_flash_v2_5'
   const inflight = new Map<string, Promise<CachedSentence>>()
 
-  function load(text: string, speed: number): Promise<CachedSentence> {
-    const k = cacheKey(opts.voiceId, speed, text)
+  function load(text: string, speed: number, previousText?: string): Promise<CachedSentence> {
+    const k = cacheKey(opts.voiceId, speed, text, previousText)
     const existing = inflight.get(k)
     if (existing) return existing
     const p = (async () => {
@@ -117,6 +117,7 @@ export function createElevenVoice(
             text,
             model_id: model,
             voice_settings: { speed },
+            ...(previousText ? { previous_text: previousText } : {}),
           }),
         })
       } finally {
@@ -135,7 +136,7 @@ export function createElevenVoice(
     return p
   }
 
-  let current: utterance | null = null
+  let current: Utterance | null = null
 
   function stopCurrent(): void {
     if (!current) return
@@ -148,13 +149,13 @@ export function createElevenVoice(
   }
 
   return {
-    async prewarm(text: string): Promise<void> {
-      await load(text, 1).catch(() => {})
+    async prewarm(text: string, wpm?: number, previousText?: string): Promise<void> {
+      await load(text, wpmToSpeed(wpm ?? 300), previousText).catch(() => {})
     },
     speak(text: string, _words: string[], speakOpts: TtsSpeakOptions): Promise<void> {
       stopCurrent()
       const speed = wpmToSpeed(speakOpts.wpm)
-      const u = {} as utterance
+      const u = {} as Utterance
       const done = new Promise<void>((resolve, reject) => {
         u.settle = resolve
         u.fail = reject
@@ -164,7 +165,7 @@ export function createElevenVoice(
       void (async () => {
         let entry: CachedSentence
         try {
-          entry = await load(text, speed)
+          entry = await load(text, speed, speakOpts.previousText)
         } catch (e) {
           if (current === u) current = null
           u.fail(e)
@@ -216,8 +217,12 @@ export function memorySentenceCache(): SentenceCache {
   }
 }
 
-/** IndexedDB-backed cache with a coarse LRU trim (value carries `ts`). */
-export function idbSentenceCache(dbName = 'steadyreader-tts', maxEntries = 200): SentenceCache {
+interface StoredSentence extends CachedSentence {
+  ts: number
+}
+
+/** IndexedDB-backed cache with LRU eviction above a byte-size cap (ADR-0012). */
+export function idbSentenceCache(dbName = 'steadyreader-tts', maxBytes = 50 * 1024 * 1024): SentenceCache {
   const open = (): Promise<IDBDatabase> =>
     new Promise((resolve, reject) => {
       const req = indexedDB.open(dbName, 1)
@@ -237,34 +242,40 @@ export function idbSentenceCache(dbName = 'steadyreader-tts', maxEntries = 200):
       t.oncomplete = () => db.close()
     })
   }
-  return {
-    async get(key) {
+  const sizeOf = (e: StoredSentence): number => e.audio.byteLength + e.timings.length * 32
+  const cache = {
+    async get(key: string): Promise<CachedSentence | null> {
       try {
-        const v = (await tx('readonly', (s) => s.get(key))) as (CachedSentence & { ts: number }) | undefined
-        return v ?? null
+        const v = (await tx('readonly', (s) => s.get(key))) as StoredSentence | undefined
+        if (!v) return null
+        void tx('readwrite', (s) => s.put({ ...v, ts: Date.now() }, key)).catch(() => {}) // LRU touch
+        return { audio: v.audio, timings: v.timings }
       } catch {
         return null
       }
     },
-    async put(key, entry) {
+    async put(key: string, entry: CachedSentence): Promise<void> {
       try {
-        await tx('readwrite', (s) => s.put({ ...entry, ts: Date.now() }, key))
+        await tx('readwrite', (s) => s.put({ ...entry, ts: Date.now() } as StoredSentence, key))
         const keys = (await tx('readonly', (s) => s.getAllKeys())) as IDBValidKey[]
-        if (keys.length > maxEntries) {
-          const all = (await Promise.all(
-            keys.map(async (k) => [(k as string), await this.get(k as string)] as const),
-          )) as Array<[string, (CachedSentence & { ts: number }) | null]>
-          const victims = all
-            .filter((x): x is [string, CachedSentence & { ts: number }] => x[1] != null)
-            .sort((a, b) => a[1].ts - b[1].ts)
-            .slice(0, keys.length - maxEntries)
-          for (const [k] of victims) await tx('readwrite', (s) => s.delete(k)).catch(() => {})
+        const entries = (
+          await Promise.all(keys.map(async (k) => [k, await tx('readonly', (s) => s.get(k))] as const))
+        ).filter((x): x is readonly [IDBValidKey, StoredSentence] => x[1] != null)
+        let total = entries.reduce((a, [, e]) => a + sizeOf(e), 0)
+        if (total <= maxBytes) return
+        const victims = entries.sort((a, b) => a[1].ts - b[1].ts)
+        for (const [k, e] of victims) {
+          if (total <= maxBytes) break
+          if (k === key) continue // never evict the entry just written
+          total -= sizeOf(e)
+          await tx('readwrite', (s) => s.delete(k)).catch(() => {})
         }
       } catch {
         // cache is best-effort
       }
     },
   }
+  return cache
 }
 
 export class HtmlAudioPlayer implements AudioPlayer {
