@@ -44,7 +44,7 @@ nothing reaches an R1 without it:
    too; deploy publishes exactly the verified artifact.
 
 Run it all locally with `pnpm verify`. Full decision record:
-[ADR-0006](docs/adr/0006-r1-compatibility-gate-ci.md).
+[ADR-0013](docs/adr/0013-r1-compatibility-gate-ci.md).
 
 ## Develop
 

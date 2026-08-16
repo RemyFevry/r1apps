@@ -24,7 +24,7 @@ built-ins fail CI. The device profile (`R1_CHROMIUM_MAJOR`, viewport, JS
 budget, `R1_JS_DENYLIST`) lives in [`r1.config.mjs`](../../r1.config.mjs) at
 the repo root — not here — because vite configs, the static scan, and the
 device-sim smoke all import it. Decision record:
-[ADR-0006](../../docs/adr/0006-r1-compatibility-gate-ci.md).
+[ADR-0013](../../docs/adr/0013-r1-compatibility-gate-ci.md).
 
 ## Develop
 
