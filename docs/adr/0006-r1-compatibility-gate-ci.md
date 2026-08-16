@@ -40,9 +40,13 @@ newer than the floor either transpiles down or fails the build.
 
 For each `apps/<name>/dist`:
 
-- **JS built-in denylist** with minimum Chrome versions (`Promise.withResolvers`
-  119, `.toSorted/.toSpliced/.toReversed/.with` 110, `Object/Map.groupBy` 117,
-  `Array.fromAsync` 121, …). Reports file:line.
+- **JS built-in denylist** — one shared list (`R1_JS_DENYLIST` in r1.config.mjs),
+  two consumers: the static scan greps call sites (`scan` regex, reports
+  file:line), and the device-sim deletes the properties before app code runs
+  (`path`), so runtime usage the grep cannot see throws and fails smoke. Entries
+  may be runtime-only (iterator helpers — `.take(` collides with user methods in
+  minified output) or scan-only (the `"scrollend"` event name — nothing to
+  delete).
 - **CSS denylist** (`:has()` 105, container queries 105, nesting 112,
   `color-mix()` 111, oklch/oklab 111, `@scope` 118, external `@import` — never).
   `url(...)` is stripped first: SVG data URIs legitimately contain `&`.
@@ -55,21 +59,25 @@ For each `apps/<name>/dist`:
 - **JS budget** (1.5 MB total): weak CPU on device; catches step changes like a
   new dependency, not book-content noise.
 
-Known gap: iterator helpers (`.take()`/`.drop()` on iterators) are method calls
-indistinguishable from user methods in minified output — the denylist cannot see
-them. The smoke suite is the backstop.
+Known gap closed: iterator helpers (`.take()`/`.drop()` on iterators) are
+method calls indistinguishable from user methods in minified output — the grep
+cannot flag them — but the device-sim deletes them from `Iterator.prototype`
+(and every other denylist entry) before app code runs, so runtime usage throws
+and fails the suite.
 
 ### `pnpm r1:smoke` — device-sim (`smoke/r1-smoke.spec.ts` + `playwright.config.ts`)
 
 Playwright Chromium at exactly 240×282, `hasTouch: false`, with the device's JS
 bridge mocked via `addInitScript` before app code runs — `creationStorage.plain`
 (async getItem/setItem/removeItem, matching r1-kit's `CreationStorageArea`) and
-`closeWebView.postMessage`. Each app must: mount something in `#app`/body, show
-zero console/page errors, and have no horizontal overflow. Then it is driven
-through the R1 hardware events exactly as r1-kit receives them (`sideClick`,
-`scrollUp/Down`, `longPressStart/End` on `window`) plus the desktop keyboard
-fallbacks. `scripts/serve-r1-dist.mjs` serves every dist at its deployed
-`/r1apps/<app>/` base so smoke loads the bytes Pages will serve.
+`closeWebView.postMessage` — plus a **runtime floor shim**: every built-in in
+`R1_JS_DENYLIST` is deleted, so Chromium behaves like the R1 floor for exactly
+the APIs the gate cares about. Each app must: mount something in `#app`/body,
+show zero console/page errors, and have no horizontal overflow. Then it is
+driven through the R1 hardware events exactly as r1-kit receives them
+(`sideClick`, `scrollUp/Down`, `longPressStart/End` on `window`) plus the
+desktop keyboard fallbacks. `scripts/serve-r1-dist.mjs` serves every dist at
+its deployed `/r1apps/<app>/` base so smoke loads the bytes Pages will serve.
 
 ### CI gates deploy (`.github/workflows/ci.yml`, replaces deploy.yml)
 

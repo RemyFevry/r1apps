@@ -1,12 +1,20 @@
 import { test, expect } from '@playwright/test'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { R1_JS_DENYLIST } from '../r1.config.mjs'
 
 /**
  * R1 device simulation: each app boots in Chromium at 240×282 with the device's
  * JS bridge mocked, then gets driven through R1 hardware events (side button,
  * scroll wheel, push-to-talk) exactly as r1-kit receives them on-device.
+ *
+ * Chromium here is newer than the R1 floor, so the suite also neutralizes every
+ * post-floor built-in from R1_JS_DENYLIST before app code runs — runtime usage
+ * the static scan cannot grep (iterator helpers, dynamic dispatch) throws and
+ * fails the test instead of silently passing.
  */
+
+const denyPaths = R1_JS_DENYLIST.flatMap((e) => (e.path ? [e.path] : []))
 
 const apps = readdirSync(join(process.cwd(), 'apps')).filter((app) =>
   existsSync(join(process.cwd(), 'apps', app, 'dist', 'index.html')),
@@ -27,26 +35,44 @@ for (const app of apps) {
       })
       page.on('pageerror', (err) => problems.push(`pageerror: ${err.message}`))
 
-      // The R1 injects creationStorage + closeWebView into the webview before app code runs.
-      await page.addInitScript(() => {
-        const mem = new Map<string, string>()
-        window.creationStorage = {
-          plain: {
-            getItem: (k: string) => Promise.resolve(mem.get(k) ?? null),
-            setItem: (k: string, v: string) => {
-              mem.set(k, v)
-              return Promise.resolve()
+      // The R1 injects creationStorage + closeWebView into the webview before app
+      // code runs. Same moment: delete built-ins newer than the R1 floor.
+      await page.addInitScript(
+        ({ paths }) => {
+          const w = window as unknown as Record<string, Record<string, unknown>>
+          for (const p of paths) {
+            const parts = p.split('.')
+            let obj: Record<string, unknown> | undefined = w[parts[0]]
+            for (const k of parts.slice(1, -1)) obj = obj?.[k] as Record<string, unknown> | undefined
+            const last = parts[parts.length - 1]
+            if (obj && last in obj) delete obj[last]
+          }
+          const mem = new Map<string, string>()
+          w.creationStorage = {
+            plain: {
+              getItem: (k: string) => Promise.resolve(mem.get(k) ?? null),
+              setItem: (k: string, v: string) => {
+                mem.set(k, v)
+                return Promise.resolve()
+              },
+              removeItem: (k: string) => {
+                mem.delete(k)
+                return Promise.resolve()
+              },
             },
-            removeItem: (k: string) => {
-              mem.delete(k)
-              return Promise.resolve()
-            },
-          },
-        }
-        window.closeWebView = { postMessage: () => {} }
-      })
+          }
+          w.closeWebView = { postMessage: () => {} }
+        },
+        { paths: denyPaths },
+      )
 
       await page.goto(`/r1apps/${app}/`)
+
+      // The floor shim must be active — guards against a silent addInitScript failure.
+      expect(await page.evaluate(() => typeof (window as unknown as { Promise?: { withResolvers?: unknown } }).Promise?.withResolvers)).toBe('undefined')
+      expect(
+        await page.evaluate(() => typeof (window as unknown as { Iterator?: { prototype?: { take?: unknown } } }).Iterator?.prototype?.take),
+      ).toBe('undefined')
 
       // Exact R1 screen size.
       expect(await page.evaluate(() => window.innerWidth), 'viewport width').toBe(240)
