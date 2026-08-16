@@ -9,7 +9,9 @@ import type { TtsSpeakOptions, TtsVoice } from '../engine/readalong'
  * timing, rate, or pause primitives — so this adapter is a **simulated voice
  * clock** (ADR-0012): char-weighted word-duration estimates, EMA-calibrated
  * against observed turn-taking, re-anchored every sentence (the engine's
- * speak granularity). Advancement prefers `r1:voice:end` events when they
+ * speak granularity). Audio requests are **pipelined 5-word chunks** posted
+ * up front so startup latency is paid once per sentence (#38 experiment).
+ * Advancement prefers `r1:voice:end` events when they
  * prove real; otherwise an estimated-duration watchdog resolves — accepting
  * occasional clipping of a slow tail rather than holding indefinitely.
  * WPM is inert on this leg.
@@ -24,6 +26,10 @@ export interface BridgeSeams {
 }
 
 const DEFAULT_MS_PER_WORD = 400 // community-observed default (Reabbit)
+/** Audio is requested in pipelined word chunks (#38): all chunks of a sentence post up front so the bridge pays startup latency once and queues the rest. */
+const CHUNK_WORDS = 5
+/** Inter-post spacing (community-observed safe cadence, Reabbit). */
+const INTER_POST_MS = 200
 const EMA_ALPHA = 0.3
 /** Extra duration weight for punctuation pauses, in char units (ADR-0011 family). */
 const SENTENCE_WEIGHT = 5
@@ -202,7 +208,20 @@ export function createBridgeVoice(seams?: Partial<BridgeSeams>): BridgeVoice {
             if (live === u) finish('watchdog')
           }, watchdogMs),
         )
-        s.post({ message: text, useLLM: false, wantsR1Response: true, requestId })
+        // Pipelined chunk posts (#38): split into CHUNK_WORDS pieces, all fired
+        // up front (spaced INTER_POST_MS); stop cancels any not yet posted.
+        const chunks: string[][] = []
+        if (words.length > 0) for (let i = 0; i < words.length; i += CHUNK_WORDS) chunks.push(words.slice(i, i + CHUNK_WORDS))
+        else chunks.push([text])
+        chunks.forEach((chunk, ci) => {
+          const fire = (): void => {
+            if (live === u && !u.ended) {
+              s.post({ message: chunk.join(' '), useLLM: false, wantsR1Response: true, requestId })
+            }
+          }
+          if (ci === 0) fire()
+          else timers.push(s.schedule(fire, ci * INTER_POST_MS))
+        })
       })
     },
     stop(): void {
