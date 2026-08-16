@@ -84,6 +84,16 @@ and the install QR's payload title — the R1 creation name — is
 (injected at build as `__APP_VERSION__`). Pre-semver artifacts keep their
 timestamp dir names.
 
+**Each version a GitHub artifact (2026-08-16, later still):** `v/<ver>/`
+directories made old builds *servable* but not first-class artifacts — no
+checksum, no download, listing meant walking a repo tree. Every sync now also
+publishes a GitHub Release on `RemyFevry/r1-shelf` tagged `v<ver>` with the
+exact site tree as a zip asset (`git archive` of `v/<ver>/` at the sync
+commit; notes carry the r1apps source SHA and bundled-book list). Existing
+versions backfilled the same day, so every shelf build ever shipped is now a
+release artifact. Serving stays on Pages (`v/<ver>/` must keep resolving for
+minted QR URLs); the release is the immutable record behind it.
+
 ## Consequences
 
 - One pipeline, two doors — ingestion logic is testable headless.

@@ -7,6 +7,7 @@
 //   pnpm bookshelf bump <major|minor|patch>
 //                                      increment apps/quickreader/package.json version
 //   pnpm bookshelf sync                build + deploy the shelf (RemyFevry/r1-shelf),
+//                                      publish the v<ver> GitHub Release (site zip),
 //                                      print the install QR page URL
 //
 // Why: on-device ingestion needs a public CORS host and a deep-link scan, and
@@ -215,7 +216,33 @@ async function main() {
 
       run('git', ['add', '-A'], { cwd: stage })
       run('git', ['commit', '-m', `shelf sync v=${ver}: ${bundledFiles().length} book(s), versioned at v/${ver}/`], { cwd: stage })
-      run('git', ['push', '-u', 'origin', 'main'], { cwd: stage })
+
+      // Artifact record: tag this sync and attach the exact site tree as a
+      // GitHub Release zip. The v/<ver>/ dir keeps Pages serving old QR links;
+      // the release is the immutable, downloadable artifact (ADR-0001).
+      const tag = `v${ver}`
+      const releaseTmp = mkdtempSync(join(tmpdir(), 'r1-shelf-rel-'))
+      const zipPath = join(releaseTmp, `r1-shelf-${tag}.zip`)
+      run('git', ['tag', tag], { cwd: stage })
+      run('git', ['archive', '--format=zip', '--output', zipPath, `HEAD:v/${ver}`], { cwd: stage })
+      run('git', ['push', '-u', 'origin', 'main', tag], { cwd: stage })
+
+      const books = bundledFiles().map((f) => {
+        const b = JSON.parse(readFileSync(join(BOOKS_DIR, f), 'utf8'))
+        return `- "${b.title}"${b.author ? ' — ' + b.author : ''} · ${b.wordCount} words`
+      })
+      const sourceSha = run('git', ['rev-parse', 'HEAD'], { cwd: ROOT })
+      const notes = [
+        `QuickReader shelf ${ver} — built from r1apps@${sourceSha.slice(0, 10)}.`,
+        '',
+        `Books bundled (${books.length}):`,
+        ...books,
+        '',
+        `Install QR page: ${SHELF_URL}v/${ver}/install.html`,
+        'The zip attached here is the exact site tree served at that URL.',
+      ].join('\n')
+      run('gh', ['release', 'create', tag, zipPath, '-R', SHELF_REPO, '--title', `QuickReader shelf ${ver}`, '--notes', notes])
+      rmSync(releaseTmp, { recursive: true, force: true })
 
       let pagesMissing = true
       try {
@@ -239,6 +266,7 @@ async function main() {
       console.log(`\nshelf deployed (v=${ver})`)
       console.log('install QR page — permanent URL for this build (open on phone/computer, scan with the R1):')
       console.log(`  ${SHELF_URL}v/${ver}/install.html`)
+      console.log(`artifact: GitHub Release ${tag} on ${SHELF_REPO} carries the exact site zip`)
       console.log('\nnotes:')
       console.log(`  - the R1 creation is named "QuickReader ${ver}" — the version is visible on the card`)
       console.log('  - versions are semver from apps/quickreader/package.json; bump before each sync (a shipped v/<ver>/ is immutable):')
