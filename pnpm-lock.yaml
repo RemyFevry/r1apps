@@ -68,8 +68,8 @@ importers:
         specifier: ^0.8.0
         version: 0.8.3
       qrcode-generator:
-        specifier: ^1.4.4
-        version: 1.5.2
+        specifier: ^2.0.4
+        version: 2.0.4
     devDependencies:
       typescript:
         specifier: ^7.0.2
@@ -684,8 +684,8 @@ packages:
     resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
     engines: {node: ^10 || ^12 || >=14}
 
-  qrcode-generator@1.5.2:
-    resolution: {integrity: sha512-pItrW0Z9HnDBnFmgiNrY1uxRdri32Uh9EjNYLPVC2zZ3ZRIIEqBoDgm4DkvDwNNDHTK7FNkmr8zAa77BYc9xNw==}
+  qrcode-generator@2.0.4:
+    resolution: {integrity: sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g==}
 
   rolldown@1.2.4:
     resolution: {integrity: sha512-rSr7irW0K7QRWzjdJXqZowkcRdDtjRduh43rBltnVKd0VFq839l1lJoDvGJb6gl7+4rTTCrPWu+YfujUL8Ug7w==}
@@ -1245,7 +1245,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  qrcode-generator@1.5.2: {}
+  qrcode-generator@2.0.4: {}
 
   rolldown@1.2.4:
     dependencies:

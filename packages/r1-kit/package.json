@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "fflate": "^0.8.0",
-    "qrcode-generator": "^1.4.4"
+    "qrcode-generator": "^2.0.4"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
