@@ -10,9 +10,12 @@ export interface ExtractedDocument {
 
 export class NotEpubError extends Error {}
 
+/** DOMParser constructor — injectable so Node CLIs can pass happy-dom's. */
+export type DomParserCtor = new () => DOMParser
+
 const BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,dd,td,pre'
 
-export async function extractEpubDocument(data: Uint8Array): Promise<ExtractedDocument> {
+export async function extractEpubDocument(data: Uint8Array, DP: DomParserCtor = DOMParser): Promise<ExtractedDocument> {
   let zip: ZipFile
   try {
     zip = await openZip(data)
@@ -31,13 +34,13 @@ export async function extractEpubDocument(data: Uint8Array): Promise<ExtractedDo
 
   const containerRaw = await text('META-INF/container.xml')
   if (!containerRaw) throw new NotEpubError('missing META-INF/container.xml')
-  const container = parseXml(containerRaw)
+  const container = parseXml(DP, containerRaw)
   const rootfile = container.getElementsByTagName('rootfile')[0]?.getAttribute('full-path')
   if (!rootfile) throw new NotEpubError('missing rootfile in container.xml')
   const opfDir = dirOf(rootfile)
   const opfRaw = await text(rootfile)
   if (!opfRaw) throw new NotEpubError('missing package document ' + rootfile)
-  const opf = parseXml(opfRaw)
+  const opf = parseXml(DP, opfRaw)
 
   let title = ''
   let author = ''
@@ -75,14 +78,14 @@ export async function extractEpubDocument(data: Uint8Array): Promise<ExtractedDo
   }
   if (!hrefs.length) throw new NotEpubError('no spine documents')
 
-  const titles = await readTocTitles(text, items, spineEl)
+  const titles = await readTocTitles(DP, text, items, spineEl)
 
   const chapters: DocChapter[] = []
   let wordCount = 0
   for (const href of hrefs) {
     const raw = await text(href)
     if (raw == null) continue
-    const doc = parseChapterDoc(raw)
+    const doc = parseChapterDoc(DP, raw)
     const paragraphs = extractParagraphs(doc)
     if (!paragraphs.length) continue
     wordCount += paragraphs.reduce((a, p) => a + wordsOf(p).length, 0)
@@ -99,16 +102,16 @@ function localNameOf(el: Element): string {
   return i < 0 ? n : n.slice(i + 1)
 }
 
-function parseXml(xml: string): Document {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+function parseXml(DP: DomParserCtor, xml: string): Document {
+  const doc = new DP().parseFromString(xml, 'application/xml')
   if (doc.getElementsByTagName('parsererror').length) throw new NotEpubError('malformed xml')
   return doc
 }
 
-function parseChapterDoc(raw: string): Document {
-  const doc = new DOMParser().parseFromString(raw, 'application/xhtml+xml')
+function parseChapterDoc(DP: DomParserCtor, raw: string): Document {
+  const doc = new DP().parseFromString(raw, 'application/xhtml+xml')
   if (doc.getElementsByTagName('parsererror').length || !doc.getElementsByTagName('body').length) {
-    return new DOMParser().parseFromString(raw, 'text/html')
+    return new DP().parseFromString(raw, 'text/html')
   }
   return doc
 }
@@ -127,6 +130,7 @@ function extractParagraphs(doc: Document): string[] {
 }
 
 async function readTocTitles(
+  DP: DomParserCtor,
   text: (name: string) => Promise<string | null>,
   items: Map<string, { href: string; mediaType: string; properties: string }>,
   spineEl: Element | undefined,
@@ -136,7 +140,7 @@ async function readTocTitles(
     const t = label.replace(/\s+/g, ' ').trim()
     if (t && !titles.has(href)) titles.set(href, t)
   }
-  const parser = new DOMParser()
+  const parser = new DP()
   for (const it of items.values()) {
     if (!it.properties.split(/\s+/).includes('nav')) continue
     const raw = await text(it.href)

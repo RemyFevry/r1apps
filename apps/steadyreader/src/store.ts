@@ -1,4 +1,6 @@
-import { fromB64, probeDeviceStorage, toB64, type CreationStorageArea, type DocChapter, type FontSize, type Pacing, type StorageHealth, type StorageProbeResult } from 'r1-kit'
+import { fromB64, probeDeviceStorage, toB64, type CreationStorageArea, type DocChapter, type FontSize, type Pacing, type StorageHealth as KitStorageHealth, type StorageProbeResult } from 'r1-kit'
+
+export type StorageHealth = KitStorageHealth
 
 export type DocKind = 'epub' | 'article'
 

@@ -3,6 +3,7 @@ import { FONT, SCREEN, THEME } from 'r1-kit'
 import { createBridgeVoice } from './tts/bridge'
 import { createElevenVoice, defaultElevenDeps, type ElevenVoice } from './tts/eleven'
 import { createDocStorage, DEFAULT_STEADY_SETTINGS, type DocRecord, type DocStorage, type SteadySettings } from './store'
+import { ShelfDocStorage } from './ingestion/shelf'
 import { addDocScreen } from './screens/adddoc'
 import { libraryScreen } from './screens/library'
 import { readerScreen } from './screens/reader'
@@ -31,7 +32,7 @@ export interface Ctx {
 }
 
 const app = document.getElementById('app') as HTMLElement
-const storage: DocStorage = createDocStorage()
+const storage: DocStorage = new ShelfDocStorage(__BUNDLED_DOCS__, __BUNDLED_DOCS_SHA__, createDocStorage())
 const settings: SteadySettings = { ...DEFAULT_STEADY_SETTINGS }
 
 const tts: TtsCtx = {
