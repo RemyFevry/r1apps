@@ -10,10 +10,11 @@
 // Why: on-device ingestion needs a public CORS host and a deep-link scan, and
 // the R1 mangles long URLs. Bundled builds put the pre-extracted word streams
 // inside the app itself — no fetch, no CORS, no URL limits, no on-device
-// parsing. See docs/adr/0001 (amendments).
+// parsing. Each sync lands at an immutable v/<ver>/ path (kept forever) and
+// refreshes the root to the latest build. See docs/adr/0001 (amendments).
 
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { Window } from 'happy-dom'
@@ -151,26 +152,25 @@ async function main() {
 
     const dist = join(ROOT, 'apps', APP, 'dist')
     const tmp = mkdtempSync(join(tmpdir(), 'r1-shelf-'))
+    const site = mkdtempSync(join(tmpdir(), 'r1-shelf-site-'))
     const stage = mkdtempSync(join(tmpdir(), 'r1-shelf-stage-'))
     let created = false
     try {
-      // Stage: only the app + shelf companion page, rebased onto the shelf path.
-      cpSync(dist + '/', stage + '/', { recursive: true })
-      rmSync(join(stage, 'install.html'))
-      rmSync(join(stage, 'index.html'))
+      // Site: only the app + shelf companion page, rebased onto the shelf path.
+      cpSync(dist + '/', site + '/', { recursive: true })
+      rmSync(join(site, 'install.html'))
+      rmSync(join(site, 'index.html'))
       const appHtml = readFileSync(join(dist, 'index.html'), 'utf8')
       const shelfHtml = appHtml
         .replaceAll('/r1apps/quickreader/', SHELF_BASE)
         .replace('<title>QuickReader</title>', '<title>QuickReader shelf</title>')
-      writeFileSync(join(stage, 'app.html'), shelfHtml)
-      const companion = readFileSync(join(stage, 'shelf-install.html'), 'utf8').replaceAll(
+      writeFileSync(join(site, 'app.html'), shelfHtml)
+      const companion = readFileSync(join(site, 'shelf-install.html'), 'utf8').replaceAll(
         '/r1apps/quickreader/',
         SHELF_BASE,
       )
-      writeFileSync(join(stage, 'install.html'), companion)
-      rmSync(join(stage, 'shelf-install.html'))
-      mkdirSync(join(stage, '.github/workflows'), { recursive: true })
-      writeFileSync(join(stage, '.github/workflows/deploy.yml'), SHELF_WORKFLOW)
+      writeFileSync(join(site, 'install.html'), companion)
+      rmSync(join(site, 'shelf-install.html'))
 
       let exists = true
       try {
@@ -185,9 +185,36 @@ async function main() {
       }
       run('git', ['init', '-b', 'main'], { cwd: stage })
       run('git', ['remote', 'add', 'origin', `https://github.com/${SHELF_REPO}.git`], { cwd: stage })
+      if (!created) {
+        // Prior version artifacts carry forward: every v/<ver>/ ever synced stays served.
+        run('git', ['pull', '--ff-only', 'origin', 'main'], { cwd: stage })
+        if (!existsSync(join(stage, 'v'))) {
+          // One-time migration: the pre-versioning root build becomes v/<its ver>/.
+          const priorMsg = run('git', ['log', '-1', '--format=%s'], { cwd: stage })
+          const priorVer = /v=([A-Za-z0-9]+)/.exec(priorMsg)?.[1] ?? 'pre-versioning'
+          mkdirSync(join(stage, 'v', priorVer), { recursive: true })
+          for (const e of readdirSync(stage)) {
+            if (e === 'v' || e === '.git' || e === '.github') continue
+            renameSync(join(stage, e), join(stage, 'v', priorVer, e))
+          }
+          console.log(`migrated existing root build to v/${priorVer}/ (now immutable)`)
+        }
+      }
+
+      // New version dir is the permanent artifact; root is refreshed to it (latest).
+      mkdirSync(join(stage, 'v'), { recursive: true })
+      cpSync(site + '/', join(stage, 'v', ver) + '/', { recursive: true })
+      for (const e of readdirSync(stage)) {
+        if (e === 'v' || e === '.git') continue
+        rmSync(join(stage, e), { recursive: true, force: true })
+      }
+      cpSync(site + '/', stage + '/', { recursive: true })
+      mkdirSync(join(stage, '.github/workflows'), { recursive: true })
+      writeFileSync(join(stage, '.github/workflows/deploy.yml'), SHELF_WORKFLOW)
+
       run('git', ['add', '-A'], { cwd: stage })
-      run('git', ['commit', '-m', `shelf sync v=${ver}: ${bundledFiles().length} book(s)`], { cwd: stage })
-      run('git', ['push', '-u', 'origin', 'main', '--force'], { cwd: stage })
+      run('git', ['commit', '-m', `shelf sync v=${ver}: ${bundledFiles().length} book(s), versioned at v/${ver}/`], { cwd: stage })
+      run('git', ['push', '-u', 'origin', 'main'], { cwd: stage })
 
       let pagesMissing = true
       try {
@@ -209,12 +236,13 @@ async function main() {
       }
 
       console.log(`\nshelf deployed (v=${ver})`)
-      console.log('install QR page (open on phone/computer, scan with the R1):')
-      console.log(`  ${SHELF_URL}install.html?v=${ver}`)
+      console.log('install QR page — permanent URL for this build (open on phone/computer, scan with the R1):')
+      console.log(`  ${SHELF_URL}v/${ver}/install.html`)
       console.log('\nnotes:')
-      console.log('  - the R1 opens app.html at the shelf root; books appear on first open of a new version')
+      console.log('  - each sync keeps its build at v/<ver>/ forever: old QR URLs stay valid and re-fetchable')
+      console.log(`  - the unversioned root (${SHELF_URL}) always serves the latest build (browsers)`)
       console.log('  - the shelf repo is public (unguessable exposure model, same as r1book transit)')
-      console.log('  - adding books later: pnpm bookshelf add … && pnpm bookshelf sync, rescan the QR')
+      console.log('  - builds accumulate in the repo (~1 MB each); adding books: pnpm bookshelf add … && pnpm bookshelf sync, rescan the new QR')
     } finally {
       rmSync(tmp, { recursive: true, force: true })
       rmSync(stage, { recursive: true, force: true })

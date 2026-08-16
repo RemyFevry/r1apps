@@ -61,6 +61,15 @@ reconstructs the raw URL (apps/quickreader/src/ingestion/transit.ts). Full
 `?add=` URLs still work for arbitrary hosts. Ingest errors now display the
 exact URL that failed.
 
+**Versioned shelf artifacts (2026-08-16):** shelf syncs force-pushed a single
+root build, so a `?v=<ver>` rescan URL was only a cache-buster — after the next
+sync it silently served whatever shipped last, and the build a card (or bug
+report quoting `v=`) actually ran became unrecoverable. Each sync now lands at
+an immutable `v/<ver>/` path (incremental pushes accumulate versions in
+`remyf-agent/r1-shelf`, ~1 MB each) and refreshes the root to the latest
+build. Versioned QR URLs are permanent; the pre-versioning root build was
+migrated to its own `v/<ver>/` on first run of the new sync.
+
 ## Consequences
 
 - One pipeline, two doors — ingestion logic is testable headless.
