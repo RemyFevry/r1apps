@@ -1,7 +1,9 @@
-# ADR-0006: R1 compatibility gate — chrome103 floor, static scan, device-sim smoke, CI-gated deploy
+# ADR-0013: R1 compatibility gate — chrome103 floor, static scan, device-sim smoke, CI-gated deploy
 
 Date: 2026-08-16
 Status: accepted
+Renumbered: was drafted as ADR-0006 the same day the steadyreader batch
+claimed 0006–0012; moved to 0013 to keep one number per decision.
 
 ## Context
 

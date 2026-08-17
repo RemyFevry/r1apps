@@ -196,3 +196,35 @@ describe('rabbit bridge voice (ADR-0012: simulated voice clock)', () => {
     await done
   })
 })
+
+describe('rabbit bridge voice: pipelined 5-word chunk posts (#38)', () => {
+  const TWELVE = Array.from({ length: 12 }, (_, i) => (i === 11 ? 'twelve.' : 'w' + i))
+
+  test('a 12-word sentence posts three chunks up front, 200ms apart, one requestId', async () => {
+    const voice = createBridgeVoice(env.seams)
+    const done = voice.speak(TWELVE.join(' '), TWELVE, { wpm: 300, onWord: () => {} })
+    expect(env.posted.length).toBe(1) // first chunk fires immediately
+    expect(env.posted[0].parsed.message).toBe('w0 w1 w2 w3 w4')
+    clock.advance(200)
+    expect(env.posted.length).toBe(2)
+    expect(env.posted[1].parsed.message).toBe('w5 w6 w7 w8 w9')
+    clock.advance(200)
+    expect(env.posted.length).toBe(3)
+    expect(env.posted[2].parsed.message).toBe('w10 twelve.')
+    expect(new Set(env.posted.map((p) => p.parsed.requestId)).size).toBe(1)
+    env.dispatch({ type: 'r1:voice:end', requestId: env.posted[0].parsed.requestId })
+    await done
+  })
+
+  test('stop cancels chunk posts still pending', async () => {
+    const voice = createBridgeVoice(env.seams)
+    const words: number[] = []
+    const done = voice.speak(TWELVE.join(' '), TWELVE, { wpm: 300, onWord: (i) => words.push(i) })
+    clock.advance(100) // before the 200ms second-chunk post
+    voice.stop()
+    await done
+    clock.advance(5000)
+    const chunkPosts = env.posted.filter((p) => p.parsed.requestId === env.posted[0].parsed.requestId)
+    expect(chunkPosts.length).toBe(1) // chunks 2 and 3 never posted
+  })
+})

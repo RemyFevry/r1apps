@@ -9,6 +9,7 @@
 //     remove <slug>                   remove one
 //     bump <major|minor|patch>        increment the app's package.json version
 //     sync                            build + deploy the app's shelf repo,
+//                                      publish the v<ver> GitHub Release (site zip),
 //                                      print the install QR page URL
 //
 // quickreader (default) bundles into apps/quickreader/books/ and deploys to
