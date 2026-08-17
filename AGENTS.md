@@ -31,6 +31,13 @@ Vite build targets are locked to the same floor (`build.target` imports from
 copied from `apps/_template` inherit all of this. Full decision record:
 docs/adr/0013-r1-compatibility-gate-ci.md.
 
+## Shelf sync rule
+
+Shelves always update when r1apps updates: after any change to an app with bundled
+documents lands on main, run `pnpm bookshelf auto` from a checkout that holds the
+bundled books (they're gitignored, so they live only on the dev machine). It bumps
+the app version, merges to main, and syncs the shelf repos.
+
 ## Agent skills
 
 ### Issue tracker
