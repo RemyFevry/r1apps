@@ -54,7 +54,7 @@ describe('ShelfDocStorage (bundled docs over the device seam)', () => {
 
   it('saving goes to the delegate; positions and settings pass through', async () => {
     const delegate = new MemoryDocStorage()
-    const shelf = new ShelfDocStorage([bundled('b1', 'Bundled One')], 'sha1', delegate)
+    const shelf = new ShelfDocStorage([bundled('b1', 'Bundled One')], 'sha-save', delegate)
     await shelf.saveDoc(stored('s1', 'Stored'))
     expect(await delegate.loadDoc('s1')).not.toBeNull()
     await shelf.savePosition('b1', { chapter: 0, wordIndex: 3, wpm: 300, audioOn: true })
@@ -65,7 +65,9 @@ describe('ShelfDocStorage (bundled docs over the device seam)', () => {
 
   it('health reports bundle for books while any bundled doc is visible', async () => {
     const delegate = new MemoryDocStorage()
-    const shelf = new ShelfDocStorage([bundled('b1', 'Bundled One')], 'sha1', delegate)
+    // Unique sha: the hidden list persists in ambient localStorage where it
+    // exists (CI node), so a shared sha would leak deletions across tests.
+    const shelf = new ShelfDocStorage([bundled('b1', 'Bundled One')], 'sha-health', delegate)
     expect(shelf.health().books).toBe('bundle')
     await shelf.deleteDoc('b1')
     expect(shelf.health().books).toBe('session')
