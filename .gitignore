@@ -7,3 +7,4 @@ apps/quickreader/books/
 test-results/
 playwright-report/
 blob-report/
+apps/steadyreader/docs/

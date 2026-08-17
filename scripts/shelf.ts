@@ -8,6 +8,7 @@ import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs
 import { join } from 'node:path'
 import { APP_BASE } from '../apps/quickreader/app.config'
 import { extractEpub, type DomParserCtor, type ExtractedBook } from '../apps/quickreader/src/ingestion/epub'
+import { extractEpubDocument, type ExtractedDocument } from '../packages/r1-kit/src/epub'
 
 export const SHELF_BASE = '/r1-shelf/'
 
@@ -53,29 +54,67 @@ export function shippedVersion(stage: string, ver: string): boolean {
   return existsSync(join(stage, 'v', ver))
 }
 
-/**
- * Copy a built dist onto the shelf site: the app page becomes app.html and the
- * companion page becomes install.html, both rebased from the app's build base
- * (APP_BASE — the single source, imported from the app config) onto SHELF_BASE.
- * Every rebased reference — including hashed asset URLs — must resolve inside
- * the staged tree; that invariant is what the companion-page 404 regression
- * broke when the base string was hand-copied here.
- */
-export function stageShelfSite(dist: string, site: string, ver: string): void {
+/** Per-app staging facts: every app on the shelf brings its own base/title/companion. */
+export interface StageAppOpts {
+  /** The app's vite base — the single source lives in its app.config.ts. */
+  appBase: string
+  /** The app's shelf base: the site-root path its shelf repo serves at. */
+  shelfBase: string
+  /** <title> of the app page; becomes "<title> shelf v<ver>" on the shelf. */
+  appTitle: string
+  /** The dist file that becomes the shelf's install.html (quickreader stages a dedicated companion). */
+  companion: string
+  /** Dist files the shelf doesn't want (quickreader drops its r1apps companion). */
+  dropFiles: string[]
+}
+
+export const QUICKREADER_STAGE: StageAppOpts = {
+  appBase: APP_BASE,
+  shelfBase: SHELF_BASE,
+  appTitle: 'QuickReader',
+  companion: 'shelf-install.html',
+  dropFiles: ['install.html'],
+}
+
+export function stageShelfSite(dist: string, site: string, ver: string, opts: StageAppOpts = QUICKREADER_STAGE): void {
   cpSync(dist + '/', site + '/', { recursive: true })
-  rmSync(join(site, 'install.html'))
-  rmSync(join(site, 'index.html'))
+  for (const f of opts.dropFiles) rmSync(join(site, f))
   const appHtml = readFileSync(join(dist, 'index.html'), 'utf8')
   const shelfHtml = appHtml
-    .replaceAll(APP_BASE, SHELF_BASE)
-    .replace('<title>QuickReader</title>', `<title>QuickReader shelf v${ver}</title>`)
+    .replaceAll(opts.appBase, opts.shelfBase)
+    .replace(`<title>${opts.appTitle}</title>`, `<title>${opts.appTitle} shelf v${ver}</title>`)
   writeFileSync(join(site, 'app.html'), shelfHtml)
-  const companion = readFileSync(join(site, 'shelf-install.html'), 'utf8').replaceAll(APP_BASE, SHELF_BASE)
+  rmSync(join(site, 'index.html'))
+  const companion = readFileSync(join(site, opts.companion), 'utf8').replaceAll(opts.appBase, opts.shelfBase)
   writeFileSync(join(site, 'install.html'), companion)
-  rmSync(join(site, 'shelf-install.html'))
+  rmSync(join(site, opts.companion))
 }
 
 export function extractEpubFile(file: string, DP: DomParserCtor): Promise<ExtractedBook> {
   const bytes = new Uint8Array(readFileSync(file))
   return extractEpub(bytes, DP)
+}
+
+/** steadyreader extracts through the r1-kit structured-document pipeline (ADR-0008). */
+export function extractDocFile(file: string, DP: DomParserCtor): Promise<ExtractedDocument> {
+  const bytes = new Uint8Array(readFileSync(file))
+  return extractEpubDocument(bytes, DP)
+}
+
+/**
+ * happy-dom's XML parser rejects single-quoted XML declarations (`<?xml
+ * version='1.0'` — legal XML that browsers and the R1 webview accept). Real
+ * EPUBs in the wild ship them, so the CLI normalizes the declaration to double
+ * quotes before any xml parse. Browser code never needs this.
+ */
+export function lenientDomParser(win: { DOMParser: DomParserCtor }): DomParserCtor {
+  const DP = win.DOMParser
+  return class {
+    parseFromString(xml: string, type: DOMParserSupportedType): Document {
+      if (type === 'application/xml' || type === 'application/xhtml+xml') {
+        xml = xml.replace(/^<\?xml\s+version='([^']*)'/, `<?xml version="$1"`)
+      }
+      return new DP().parseFromString(xml, type) as unknown as Document
+    }
+  } as unknown as DomParserCtor
 }
