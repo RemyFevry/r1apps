@@ -8,3 +8,4 @@ test-results/
 playwright-report/
 blob-report/
 apps/steadyreader/docs/
+apps/steadyreader/audio/

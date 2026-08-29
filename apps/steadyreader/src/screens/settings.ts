@@ -38,13 +38,6 @@ export function settingsScreen(ctx: Ctx): () => void {
       },
     },
     {
-      label: 'Voice engine',
-      value: () => (settings.engine === 'rabbit' ? 'r1 voice' : 'ElevenLabs'),
-      act: () => {
-        settings.engine = settings.engine === 'rabbit' ? 'elevenlabs' : 'rabbit'
-      },
-    },
-    {
       label: 'ElevenLabs voice id',
       value: () => settings.elevenVoice || 'default',
       act: () => {
@@ -59,6 +52,11 @@ export function settingsScreen(ctx: Ctx): () => void {
         const k = prompt('ElevenLabs API key (stays on this device):', '')
         if (k != null) settings.elevenKey = k.trim()
       },
+    },
+    {
+      label: 'Audio probe (#38)',
+      value: () => 'run on-device',
+      act: () => ctx.nav.probe(),
     },
   ]
 

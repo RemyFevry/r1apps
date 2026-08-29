@@ -8,6 +8,9 @@
 //     list                             show bundled documents
 //     remove <slug>                   remove one
 //     bump <major|minor|patch>        increment the app's package.json version
+//     audio [--engine kokoro|azure]   pre-generate chapter audio + word-timing
+//                                      sidecars for every bundled book (steadyreader
+//                                      only, ADR-0014; hash-incremental, never blocks sync)
 //     sync                            build + deploy the app's shelf repo,
 //                                      publish the v<ver> GitHub Release (site zip),
 //                                      print the install QR page URL
@@ -322,6 +325,37 @@ async function main() {
     return
   }
 
+  if (cmd === 'audio') {
+    if (APP !== 'steadyreader') die('audio is a steadyreader command (pre-generated chapter streams, ADR-0014)')
+    if (!bundledFiles().length) die(`no documents bundled — add one first: pnpm bookshelf --app ${APP} add <book.epub>`)
+    let engineName = 'kokoro'
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--engine') engineName = args[++i]
+    }
+    if (!['kokoro', 'azure'].includes(engineName)) die('unknown --engine (kokoro | azure)')
+    const { generateBookAudio } = await import('./audio.ts')
+    const { kokoroEngine, azureEngine } = await import('./audio-engines.ts')
+    const books = bundledFiles().map((f) => {
+      const b = JSON.parse(readFileSync(join(BOOKS_DIR, f), 'utf8'))
+      return { id: b.id, chapters: b.chapters }
+    })
+    const engine = engineName === 'azure' ? azureEngine() : kokoroEngine()
+    console.log(`pre-generating chapter audio (engine: ${engineName}) …`)
+    const s = await generateBookAudio({
+      engine,
+      engineName,
+      audioDir: join(ROOT, 'apps', APP, 'audio'),
+      books,
+    })
+    console.log(
+      `done: ${s.generated} generated, ${s.skipped} skipped (unchanged), ${s.quotaLimited} quota-limited${s.quotaBooks.length ? ' (' + s.quotaBooks.join(', ') + ')' : ''}, ${s.failed} failed`,
+    )
+    if (s.failed) console.log('failed chapters fall to the runtime degradation ladder (ADR-0014)')
+    if (s.quotaLimited) console.log('quota-exhausted chapters fall to the runtime ladder; re-run after a reset fills gaps automatically')
+    console.log('run `pnpm bookshelf --app steadyreader bump <major|minor|patch>` then `sync` to deploy audio with the shelf')
+    return
+  }
+
   if (cmd === 'sync') {
     if (!bundledFiles().length) die(`no documents bundled — add one first: pnpm bookshelf --app ${APP} add <book.epub>`)
     const ver = appVersion()
@@ -335,6 +369,15 @@ async function main() {
     try {
       // Site: only the app + shelf companion page, rebased onto the shelf path.
       stageShelfSite(dist, site, ver, CFG.stage)
+
+      // Pre-generated chapter audio (ADR-0014) deploys with the shelf at the
+      // immutable v/<ver>/ path; the app resolves `audio/manifest.json` against
+      // its own location, so the app and its audio always share a version.
+      const audioDir = join(ROOT, 'apps', APP, 'audio')
+      if (APP === 'steadyreader' && existsSync(audioDir) && existsSync(join(audioDir, 'manifest.json'))) {
+        cpSync(audioDir + '/', join(site, 'audio') + '/', { recursive: true })
+        console.log(`staged audio/ (${readdirSync(audioDir).length - 2} book dirs)`)
+      }
 
       let exists = true
       try {
@@ -451,7 +494,7 @@ async function main() {
     return
   }
 
-  die('usage: pnpm bookshelf [--app quickreader|steadyreader] <add|list|remove|bump|sync>')
+  die('usage: pnpm bookshelf [--app quickreader|steadyreader] <add|list|remove|bump|audio|sync>')
 }
 
 main().catch((e) => die(e?.message ?? String(e)))

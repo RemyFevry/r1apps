@@ -59,8 +59,8 @@ describe('ShelfDocStorage (bundled docs over the device seam)', () => {
     expect(await delegate.loadDoc('s1')).not.toBeNull()
     await shelf.savePosition('b1', { chapter: 0, wordIndex: 3, wpm: 300, audioOn: true })
     expect(await delegate.loadPosition('b1')).toMatchObject({ wordIndex: 3, audioOn: true })
-    await shelf.saveSettings({ ...(await shelf.loadSettings())!, engine: 'elevenlabs' })
-    expect((await delegate.loadSettings())?.engine).toBe('elevenlabs')
+    await shelf.saveSettings({ ...(await shelf.loadSettings())!, elevenVoice: 'voice-9' })
+    expect((await delegate.loadSettings())?.elevenVoice).toBe('voice-9')
   })
 
   it('health reports bundle for books while any bundled doc is visible', async () => {

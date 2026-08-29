@@ -1,17 +1,13 @@
 import { attachInputs, buildChapterIndex, createRowList, formatDuration, type ChapterIndex, type DocChapter } from 'r1-kit'
 import { createReadAlong, type ReadAlong, type ReadAlongHudKind, type ReadAlongSnapshot, type TtsVoice } from '../engine/readalong'
+import { createChapterAudioSource, createChapterStreamSeam, defaultChapterAudioDeps, defaultChapterStreamDeps } from '../audio'
 import { wpmToSpeed } from '../tts/eleven'
 import type { Ctx, DocRecord } from '../main'
 
 const FONT_PX = { S: 15, M: 18, L: 22 } as const
 
 /** Semantic HUD kinds → text + stickiness. Wording lives here, not the engine. */
-function hudText(
-  doc: DocRecord,
-  leg: 'rabbit' | 'elevenlabs',
-  kind: ReadAlongHudKind,
-  s: ReadAlongSnapshot,
-): [string, boolean] {
+function hudText(doc: DocRecord, kind: ReadAlongHudKind, s: ReadAlongSnapshot): [string, boolean] {
   switch (kind) {
     case 'pause':
       return [`⏸ ${s.wpm} wpm${s.audioOn ? ' · 🔊' : ''} · ${formatDuration(s.remaining.book)} left`, true]
@@ -19,18 +15,20 @@ function hudText(
       return [`${s.wpm} wpm${s.audioOn ? ' · 🔊' : ''}`, false]
     case 'wpm':
       if (!s.audioOn) return [`${s.wpm} wpm`, false]
-      if (leg === 'rabbit') return [`${s.wpm} wpm (silent-mode speed)`, false]
       {
         const speed = wpmToSpeed(s.wpm)
         const pinned = s.wpm >= 360 || s.wpm <= 210
-        return [`${s.wpm} wpm → ${speed.toFixed(2)}×${pinned ? ' max' : ''} (next sentence)`, false]
+        const who = s.narrator === 'eleven' ? ' (next sentence)' : ''
+        return [`${s.wpm} wpm → ${speed.toFixed(2)}×${pinned ? ' max' : ''}${who}`, false]
       }
     case 'speaking':
-      return ['🔊 …', false]
+      return [s.narrator === 'stream' ? '🔊 pre-gen' : s.narrator === 'eleven' ? '🔊 ElevenLabs' : '🔊 …', false]
     case 'audioOn':
       return ['🔊 voice on', false]
     case 'audioOff':
       return ['🔇 voice off', false]
+    case 'audioUnavailable':
+      return ['audio unavailable — reading silently', true]
     case 'chapterSeek':
       return [`Ⓒ ${s.chapter + 1}/${doc.chapters.length} — side = resume`, true]
     case 'end':
@@ -253,9 +251,11 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
   void (async () => {
     const saved = await storage.loadPosition(doc.id)
     if (unmounted) return
-    const leg: 'rabbit' | 'elevenlabs' =
-      settings.engine === 'elevenlabs' && settings.elevenKey && tts.eleven ? 'elevenlabs' : 'rabbit'
-    const voice: TtsVoice = leg === 'elevenlabs' ? tts.eleven! : tts.rabbit
+    // ADR-0014: voiced mode picks a driver per chapter at a boundary — the
+    // chapter stream when the shelf has pre-gen, else ElevenLabs (keyed), else
+    // silent. No engine preference: a key present = ElevenLabs available.
+    const voice: TtsVoice | null = tts.eleven
+    const streams = createChapterStreamSeam(doc.id, createChapterAudioSource(defaultChapterAudioDeps()), defaultChapterStreamDeps())
     const initial = saved
       ? { chapter: saved.chapter, wordIndex: saved.wordIndex, wpm: saved.wpm || settings.defaultWpm, audioOn: saved.audioOn }
       : { chapter: 0, wordIndex: 0, wpm: settings.defaultWpm, audioOn: false }
@@ -266,7 +266,7 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
       events: {
         onWord: renderWord,
         onStatus,
-        onHud: (kind, s) => showHud(...hudText(doc, leg, kind, s)),
+        onHud: (kind, s) => showHud(...hudText(doc, kind, s)),
         onExit: () => nav.library(),
       },
       seams: {
@@ -278,6 +278,7 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
         cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       },
       voice,
+      streams,
     })
   })()
 
