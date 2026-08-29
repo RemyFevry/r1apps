@@ -39,6 +39,8 @@ export interface ChapterAudioSource {
   fetchChapter(bookId: string, chapter: number): Promise<ChapterAudio | null>
   /** Warm the on-device cache for a chapter (fire-and-forget; failures are swallowed). */
   preload(bookId: string, chapter: number): void
+  /** Start the manifest fetch now (library/open time), so chapter opens never pay for it. */
+  prime(): void
 }
 
 function parseTimings(raw: unknown): WordTiming[] {
@@ -115,6 +117,9 @@ export function createChapterAudioSource(deps: ChapterAudioDeps): ChapterAudioSo
     fetchChapter,
     preload(bookId: string, chapter: number): void {
       void fetchChapter(bookId, chapter).catch(() => {})
+    },
+    prime(): void {
+      void getManifest()
     },
   }
 }

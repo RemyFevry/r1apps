@@ -254,8 +254,11 @@ export function readerScreen(ctx: Ctx, doc: DocRecord): () => void {
     // ADR-0014: voiced mode picks a driver per chapter at a boundary — the
     // chapter stream when the shelf has pre-gen, else ElevenLabs (keyed), else
     // silent. No engine preference: a key present = ElevenLabs available.
+    // The manifest is primed at open time so chapter starts don't pay for it.
     const voice: TtsVoice | null = tts.eleven
-    const streams = createChapterStreamSeam(doc.id, createChapterAudioSource(defaultChapterAudioDeps()), defaultChapterStreamDeps())
+    const audioSource = createChapterAudioSource(defaultChapterAudioDeps())
+    audioSource.prime()
+    const streams = createChapterStreamSeam(doc.id, audioSource, defaultChapterStreamDeps())
     const initial = saved
       ? { chapter: saved.chapter, wordIndex: saved.wordIndex, wpm: saved.wpm || settings.defaultWpm, audioOn: saved.audioOn }
       : { chapter: 0, wordIndex: 0, wpm: settings.defaultWpm, audioOn: false }

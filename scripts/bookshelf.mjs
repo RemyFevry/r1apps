@@ -315,6 +315,17 @@ async function main() {
     run('git', ['fetch', 'origin', 'main'])
     run('git', ['checkout', '-B', 'shelf/auto', 'origin/main'])
     for (const [name] of targets) {
+      if (name === 'steadyreader') {
+        // Pre-generated chapter audio (ADR-0014) regenerates with the shelf.
+        // Missing kokoro must not block the sync — the runtime degradation
+        // ladder covers chapters without pre-gen.
+        console.log(`\n=== audio ${name} (pre-gen, ADR-0014) ===`)
+        try {
+          run('pnpm', ['bookshelf', '--app', name, 'audio'])
+        } catch {
+          console.warn('audio generation failed (is kokoro installed?) — shelves still sync')
+        }
+      }
       console.log(`\n=== sync ${name} ===`)
       run('pnpm', ['bookshelf', '--app', name, 'sync'])
     }

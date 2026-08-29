@@ -62,8 +62,13 @@ def main():
         )
         sys.stdout.write("\n")
     else:
-        sys.stderr.write(f"QUOTA synthesis failed: {result.reason}\n")
-        sys.exit(1)
+        details = getattr(result, "error_details", "") or ""
+        if "429" in details or "403" in details:
+            # quota exhaustion — the CLI skips the rest of the book gracefully
+            sys.stderr.write(f"QUOTA synthesis failed: {details}\n")
+            sys.exit(1)
+        sys.stderr.write(f"synthesis failed: {result.reason} {details}\n")
+        sys.exit(5)
 
 
 if __name__ == "__main__":

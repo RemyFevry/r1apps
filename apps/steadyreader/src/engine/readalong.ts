@@ -108,7 +108,8 @@ export interface ChapterStream {
  * Per-book resolver the engine asks at every chapter boundary. `open` returns
  * null when the chapter simply has no pre-gen audio (the ladder falls to the
  * sentence-level voice, then silent); it rejects when pre-gen exists but cannot
- * be obtained (fetch/parse failure → silent from the current word + notice).
+ * be obtained — the ladder then falls to the next rung (ElevenLabs when keyed,
+ * else silent with an "audio unavailable" notice).
  */
 export interface ChapterStreamSeam {
   open(chapter: number): Promise<ChapterStream | null>
@@ -403,6 +404,15 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
     if (st === 'playing') stepSilent()
   }
 
+  /** Tear down the live chapter stream (seek/toggle-off/destroy); settles its in-flight play. */
+  function stopStream(): void {
+    if (stream !== null) {
+      stream.stop()
+      stream = null
+      streamGen++
+    }
+  }
+
   // --- shared boundary: chapter card or the end ---
 
   function boundary(): void {
@@ -528,11 +538,7 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
         } else {
           speakGen++
           voice?.stop()
-          if (stream !== null) {
-            stream.stop()
-            stream = null
-            streamGen++
-          }
+          stopStream()
           stepSilent()
         }
       }
@@ -555,11 +561,7 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
       clearTimers()
       speakGen++
       voice?.stop()
-      if (stream !== null) {
-        stream.stop()
-        stream = null
-        streamGen++
-      }
+      stopStream()
       chapter = Math.min(Math.max(target, 0), chapters.length - 1)
       wordIndex = 0
       sinceSave = 0
@@ -578,11 +580,7 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
       clearTimers()
       speakGen++
       voice?.stop()
-      if (stream !== null) {
-        stream.stop()
-        stream = null
-        streamGen++
-      }
+      stopStream()
       save()
     },
   }

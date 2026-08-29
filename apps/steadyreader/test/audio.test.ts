@@ -219,6 +219,14 @@ describe('chapter audio source (ADR-0014: shelf manifest + on-device cache)', ()
     await new Promise((r) => setTimeout(r, 0))
     expect(cache.map.size).toBe(1)
   })
+
+  test('prime() fetches the manifest eagerly (library/open time), so chapter opens never pay for it', async () => {
+    const m = makeFetch(MANIFEST)
+    const src = createChapterAudioSource({ fetch: m.impl, cache: new MemoryCache(), baseUrl: BASE })
+    src.prime()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(m.calls.some((c) => c.url.endsWith('audio/manifest.json'))).toBe(true)
+  })
 })
 
 describe('chapter stream driver (ADR-0014: audio element is the clock)', () => {
