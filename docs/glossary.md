@@ -64,7 +64,8 @@ decisions make them sharp.
   every sentence (ADR-0011).
 - **Simulated voice clock** — the bridge leg's highlight timing: char-weighted
   estimates *of the voice's* pace, EMA-calibrated, re-anchored each sentence;
-  WPM inert while voiced there (ADR-0012).
+  WPM inert while voiced there (ADR-0012). **Removed — the bridge leg is deleted
+  (ADR-0014).**
 - **Never-skip hold** — when audio isn't ready or its completion isn't confirmed,
   the highlight waits behind the generating/speaking indicator; a read-along
   never silently drops or outruns text (ADRs 0011, 0012).
@@ -84,3 +85,24 @@ decisions make them sharp.
 - **Device-sim smoke** — Playwright Chromium at 240×282 with
   `creationStorage`/`closeWebView` mocked, driving an app through R1 hardware
   events; fails on console errors or horizontal overflow (ADR-0013).
+- **Pre-gen** — chapter audio synthesized at shelf-sync time on the dev machine
+  (`pnpm bookshelf audio`), not at read time on the device; pluggable engines
+  (Kokoro default, Azure opt-in), hash-incremental per (book, chapter text);
+  quota-exhausted chapters are skipped and fall to the runtime ladder
+  (ADR-0014).
+- **Word-timing sidecar** — the per-chapter JSON of word → start/end seconds,
+  produced in the same synthesis pass as the audio; what the highlight maps
+  `currentTime` through (ADR-0014).
+- **Chapter stream** — one chapter's audio played as a single gapless stream;
+  the audio element is the clock and the highlight is `currentTime` → word;
+  pause/resume/seek are plain audio-element operations (ADR-0014).
+- **Sync-by-construction** — word timestamps that derive from the same synthesis
+  pass as the audio they describe, so the highlight can never disagree with the
+  voice; no estimation anywhere (ADR-0014).
+- **Playback-rate scaling** — WPM→speed on pre-gen audio via
+  `playbackRate = clamp(WPM/300, 0.7, 1.2)`; timestamps live on the media
+  timeline, so sync holds at any speed and live nudges apply immediately
+  (ADR-0014).
+- **Degradation ladder** — audio fallback order: pre-gen stream → ElevenLabs at
+  the next sentence boundary → silent WPM at the current word; auto-restore at
+  the next chapter boundary; reading never blocks on audio (ADR-0014).
