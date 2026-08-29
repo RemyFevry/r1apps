@@ -27,13 +27,10 @@ export interface DocPosition {
   frac?: number
 }
 
-export type EngineId = 'rabbit' | 'elevenlabs'
-
 export interface SteadySettings {
   defaultWpm: number
   font: FontSize
   pacing: Pacing
-  engine: EngineId
   elevenVoice: string
   elevenKey: string
 }
@@ -42,7 +39,6 @@ export const DEFAULT_STEADY_SETTINGS: SteadySettings = {
   defaultWpm: 300,
   font: 'M',
   pacing: 'standard',
-  engine: 'rabbit',
   elevenVoice: '',
   elevenKey: '',
 }

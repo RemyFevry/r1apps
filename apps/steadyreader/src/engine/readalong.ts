@@ -31,10 +31,15 @@ export interface ReadAlongSnapshot {
   wordInSentence: number
   wpm: number
   audioOn: boolean
+  /** Which clock drives the highlight right now (ADR-0014 degradation ladder). */
+  narrator: Narrator
   /** Progress through the whole document, 0..1. */
   frac: number
   remaining: { chapter: number; book: number }
 }
+
+/** Which clock drives the highlight right now (ADR-0014 degradation ladder). */
+export type Narrator = 'stream' | 'eleven' | 'silent'
 
 export type ReadAlongHudKind =
   | 'pause'
@@ -44,6 +49,7 @@ export type ReadAlongHudKind =
   | 'audioOn'
   | 'audioOff'
   | 'chapterSeek'
+  | 'audioUnavailable'
   | 'end'
 
 export interface ReadAlongEvents {
@@ -81,13 +87,46 @@ export interface TtsVoice {
   prewarm?(text: string, wpm: number, previousText?: string): void
 }
 
+/**
+ * The engine-facing half of the chapter-stream seam (ADR-0014): one chapter's
+ * pre-generated audio played as a single gapless stream; the audio element is
+ * the clock. `play` emits chapter-relative word indices from the timing table
+ * and resolves when the chapter completes or the stream is stopped; it rejects
+ * when the stream fails mid-chapter. `pause` keeps the exact position and the
+ * in-flight promise pending; `resume` continues it from where it paused.
+ */
+export interface ChapterStream {
+  play(fromWord: number, wpm: number, onWord: (index: number) => void): Promise<void>
+  pause(): void
+  resume(): void
+  seekToWord(index: number): void
+  setWpm(wpm: number): void
+  stop(): void
+}
+
+/**
+ * Per-book resolver the engine asks at every chapter boundary. `open` returns
+ * null when the chapter simply has no pre-gen audio (the ladder falls to the
+ * sentence-level voice, then silent); it rejects when pre-gen exists but cannot
+ * be obtained — the ladder then falls to the next rung (ElevenLabs when keyed,
+ * else silent with an "audio unavailable" notice).
+ */
+export interface ChapterStreamSeam {
+  open(chapter: number): Promise<ChapterStream | null>
+  /** Warm the on-device cache for a chapter's pre-gen audio (fire-and-forget). */
+  preload(chapter: number): void
+}
+
 export interface ReadAlongOptions {
   chapters: DocChapter[]
   initial: { chapter: number; wordIndex: number; wpm: number; audioOn: boolean }
   pacing: Pacing
   events: ReadAlongEvents
   seams: ReadAlongSeams
-  voice: TtsVoice
+  /** Sentence-level TTS leg (ElevenLabs fallback); null when no key is set. */
+  voice: TtsVoice | null
+  /** Pre-generated chapter streams; null when the app has no audio source. */
+  streams: ChapterStreamSeam | null
 }
 
 export interface ReadAlong {
@@ -108,7 +147,7 @@ export interface ReadAlong {
 }
 
 export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
-  const { chapters, pacing, events, seams, voice } = opts
+  const { chapters, pacing, events, seams, voice, streams } = opts
   const indexes: ChapterIndex[] = chapters.map(buildChapterIndex)
   const offsets: number[] = []
   let acc = 0
@@ -130,6 +169,9 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
   let wpm = opts.initial.wpm
   let audioOn = opts.initial.audioOn
   let st: ReadAlongStatus = 'paused'
+  let narrator: Narrator = 'silent'
+  /** The active chapter stream, if the ladder picked one for this chapter. */
+  let stream: ChapterStream | null = null
   let destroyed = false
   let cardTimer: ReturnType<ReadAlongSeams['schedule']> | null = null
   let wordTimer: ReturnType<ReadAlongSeams['schedule']> | null = null
@@ -137,6 +179,8 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
   let sinceSave = 0
   /** Invalidates in-flight speak settlements after stop/seek/toggle. */
   let speakGen = 0
+  /** Invalidates in-flight chapter-stream settlements after stop/seek/toggle-off/boundary. NOT bumped by pause — a paused stream survives it (exact-position resume). */
+  let streamGen = 0
   /** Double-click latch (ADR-0010): the pacing state before click 1, at `at`. */
   let latch: { prior: 'playing' | 'paused'; at: number } | null = null
 
@@ -157,6 +201,7 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
       wordInSentence: at.wordInSentence,
       wpm,
       audioOn,
+      narrator,
       frac: frac(),
       remaining: {
         chapter: timeRemainingMinutes(indexes[chapter].wordCount - wordIndex, wpm),
@@ -193,10 +238,14 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
     }
   }
 
-  // --- silent clock (ADR-0006): shaped dwells, word-granular ---
+  // --- silent clock (ADR-0006): shaped dwells, word-granular. Also the
+  // fetch-cover and degradation clock in voiced mode (ADR-0014) — the ladder
+  // hands the highlight here at the current word while a chapter stream loads
+  // or after a failure, so reading never blocks on audio. ---
 
   function stepSilent(): void {
-    if (destroyed || st !== 'playing' || audioOn) return
+    if (destroyed || st !== 'playing') return
+    narrator = 'silent'
     events.onWord?.(snapshot())
     const ci = indexes[chapter]
     const word = ci.sentences[sentenceAt(ci, wordIndex).sentence].words
@@ -207,7 +256,7 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
 
   function advanceSilent(): void {
     wordTimer = null
-    if (destroyed || st !== 'playing' || audioOn) return
+    if (destroyed || st !== 'playing') return
     const ci = indexes[chapter]
     if (wordIndex < ci.wordCount - 1) {
       wordIndex++
@@ -221,7 +270,9 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
   // --- voiced clock (ADR-0012): the voice drives the highlight ---
 
   function speakSentence(): void {
-    if (destroyed || st !== 'playing' || !audioOn) return
+    if (destroyed || st !== 'playing' || !audioOn || !voice) return
+    narrator = 'eleven'
+    const v: TtsVoice = voice
     const ci = indexes[chapter]
     const at = sentenceAt(ci, wordIndex)
     wordIndex = ci.sentences[at.sentence].wordOffset
@@ -231,9 +282,9 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
     events.onHud?.('speaking', snapshot())
     // Lookahead prefetch (ADR-0012): warm the next sentence while this one plays.
     const next = ci.sentences[at.sentence + 1]
-    if (next) voice.prewarm?.(next.text, wpm, sent.text)
+    if (next) v.prewarm?.(next.text, wpm, sent.text)
     const gen = ++speakGen
-    void voice
+    void v
       .speak(sent.text, sent.words.map((w) => w.text), {
         wpm,
         previousText,
@@ -256,14 +307,117 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
         }
       })
       .catch(() => {
-        // Never-skip (ADR-0012): a failed utterance holds the highlight;
-        // user interaction resyncs. No silent-clock fallback mid-session.
+        // ADR-0014: a failed utterance is a mid-chapter failure — the ladder
+        // falls to the WPM clock at the current word (an unresolved utterance
+        // still never advances; never-skip, ADR-0012).
+        if (gen !== speakGen || destroyed || st !== 'playing') return
+        degradeToSilent()
       })
+  }
+
+  // --- voiced entry (ADR-0014): pick the driver per chapter at a boundary ---
+
+  /** Entry into the sentence-level leg: sentence-start snap, then speak. */
+  function startVoiceSentence(): void {
+    if (destroyed || st !== 'playing' || !audioOn) return
+    if (!voice) {
+      narrator = 'silent'
+      events.onHud?.('audioUnavailable', snapshot())
+      return
+    }
+    if (wordTimer !== null) {
+      seams.cancel(wordTimer)
+      wordTimer = null
+    }
+    const ci = indexes[chapter]
+    wordIndex = ci.sentences[sentenceAt(ci, wordIndex).sentence].wordOffset
+    speakSentence()
+  }
+
+  /**
+   * Voiced entry: try the chapter stream, else the sentence leg, else silent.
+   * Reading never blocks on the fetch — the WPM clock covers it and the stream
+   * joins at the word it reached (exact position, no jump). Rejects from the
+   * seam (pre-gen exists but cannot be obtained) land on silent + notice.
+   */
+  function startVoiced(): void {
+    if (destroyed || st !== 'playing' || !audioOn) return
+    if (!streams) {
+      startVoiceSentence()
+      return
+    }
+    // Next chapter's audio ready when reached (story 6): warm it at chapter entry.
+    if (chapter + 1 < chapters.length) streams.preload(chapter + 1)
+    stepSilent()
+    void (async () => {
+      let handle: ChapterStream | null = null
+      try {
+        handle = await streams.open(chapter)
+      } catch {
+        handle = null
+      }
+      if (destroyed || st !== 'playing' || !audioOn || stream !== null) {
+        handle?.stop()
+        return
+      }
+      if (!handle) {
+        startVoiceSentence()
+        return
+      }
+      if (wordTimer !== null) {
+        seams.cancel(wordTimer)
+        wordTimer = null
+      }
+      stream = handle
+      const gen = ++streamGen
+      narrator = 'stream'
+      events.onHud?.('speaking', snapshot())
+      stream.setWpm(wpm)
+      const ci = indexes[chapter]
+      const maxWord = Math.max(ci.wordCount - 1, 0)
+      void stream
+        .play(wordIndex, wpm, (i) => {
+          if (gen !== streamGen || destroyed || st !== 'playing') return
+          wordIndex = Math.min(Math.max(i, 0), maxWord)
+          countStep()
+          events.onWord?.(snapshot())
+        })
+        .then(() => {
+          if (gen !== streamGen || destroyed) return
+          stream = null
+          if (wordIndex >= maxWord) boundary()
+          else stepSilent() // audio ran short: finish the chapter on the WPM clock
+        })
+        .catch(() => {
+          if (gen !== streamGen || destroyed) return
+          degradeToSilent()
+        })
+    })()
+  }
+
+  /** Mid-chapter audio failure: WPM clock at the current word, notice, audioOn untouched (auto-restore at the next boundary). */
+  function degradeToSilent(): void {
+    stream = null
+    streamGen++
+    narrator = 'silent'
+    events.onHud?.('audioUnavailable', snapshot())
+    if (st === 'playing') stepSilent()
+  }
+
+  /** Tear down the live chapter stream (seek/toggle-off/destroy); settles its in-flight play. */
+  function stopStream(): void {
+    if (stream !== null) {
+      stream.stop()
+      stream = null
+      streamGen++
+    }
   }
 
   // --- shared boundary: chapter card or the end ---
 
   function boundary(): void {
+    stream = null
+    streamGen++
     if (chapter < chapters.length - 1) {
       chapter++
       wordIndex = 0
@@ -288,7 +442,7 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
       cardTimer = null
     }
     setStatus('playing')
-    if (audioOn) speakSentence()
+    if (audioOn) startVoiced()
     else stepSilent()
   }
 
@@ -297,7 +451,8 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
     st = 'paused'
     clearTimers()
     speakGen++
-    voice.stop()
+    voice?.stop()
+    stream?.pause() // exact position kept; the in-flight play stays pending
     save()
     events.onHud?.('pause', snapshot())
   }
@@ -307,9 +462,8 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
     setStatus('playing')
     events.onHud?.('resume', snapshot())
     if (audioOn) {
-      // Sentence-start rule (ADR-0012): voice entry re-speaks the sentence.
-      wordIndex = indexes[chapter].sentences[sentenceAt(indexes[chapter], wordIndex).sentence].wordOffset
-      speakSentence()
+      if (stream) stream.resume() // exact-position resume (ADR-0014)
+      else startVoiced()
     } else {
       stepSilent()
     }
@@ -318,9 +472,9 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
   function restartClocks(): void {
     clearTimers()
     speakGen++
-    voice.stop()
+    voice?.stop()
     if (st === 'playing') {
-      if (audioOn) speakSentence()
+      if (audioOn) startVoiced()
       else stepSilent()
     }
   }
@@ -329,12 +483,8 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
   const ci0 = indexes[chapter]
   if (wordIndex > 0 && wordIndex < ci0.wordCount) {
     setStatus('playing')
-    if (audioOn) {
-      wordIndex = ci0.sentences[sentenceAt(ci0, wordIndex).sentence].wordOffset
-      speakSentence()
-    } else {
-      stepSilent()
-    }
+    if (audioOn) startVoiced()
+    else stepSilent()
   } else {
     wordIndex = 0
     openCard(false)
@@ -371,6 +521,7 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
     setWpm(delta: number): void {
       if (destroyed) return
       wpm = Math.min(WPM_MAX, Math.max(WPM_MIN, wpm + delta))
+      stream?.setWpm(wpm) // live WPM nudge → playbackRate immediately (ADR-0014)
       events.onHud?.(live() ? 'wpm' : 'pause', snapshot())
     },
     toggleAudio(): void {
@@ -383,10 +534,11 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
             seams.cancel(wordTimer)
             wordTimer = null
           }
-          speakSentence()
+          startVoiced()
         } else {
           speakGen++
-          voice.stop()
+          voice?.stop()
+          stopStream()
           stepSilent()
         }
       }
@@ -400,14 +552,16 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
       wordIndex = ci.sentences[target].wordOffset
       sinceSave = 0
       save()
-      restartClocks()
+      if (stream) stream.seekToWord(wordIndex) // the audio jumps to that word (story 4)
+      else restartClocks()
       events.onWord?.(snapshot())
     },
     seekChapter(target: number): void {
       if (destroyed) return
       clearTimers()
       speakGen++
-      voice.stop()
+      voice?.stop()
+      stopStream()
       chapter = Math.min(Math.max(target, 0), chapters.length - 1)
       wordIndex = 0
       sinceSave = 0
@@ -425,7 +579,8 @@ export function createReadAlong(opts: ReadAlongOptions): ReadAlong {
       destroyed = true
       clearTimers()
       speakGen++
-      voice.stop()
+      voice?.stop()
+      stopStream()
       save()
     },
   }

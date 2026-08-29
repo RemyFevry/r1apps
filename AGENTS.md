@@ -36,10 +36,13 @@ docs/adr/0013-r1-compatibility-gate-ci.md.
 Shelves always update when r1apps updates: after any change to an app with bundled
 documents lands on main, run `pnpm bookshelf auto` from a checkout that holds the
 bundled books (they're gitignored, so they live only on the dev machine). It bumps
-the app version, merges to main, and syncs the shelf repos.
+the app version, merges to main, and syncs the shelf repos. For steadyreader, `auto`
+also regenerates pre-generated chapter audio (`bookshelf audio`, ADR-0014); a missing
+kokoro install degrades to a warning and shelves still sync — the runtime degradation
+ladder covers chapters without pre-gen.
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues live in GitHub Issues (`RemyFevry/r1apps`); agent operations run as `remyf-agent`. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues (`RemyFevry/r1apps`); agent operations run as `larky971`. See `docs/agents/issue-tracker.md`.

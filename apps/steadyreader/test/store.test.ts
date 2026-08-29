@@ -77,8 +77,8 @@ describe('MemoryDocStorage', () => {
   it('round-trips positions with audioOn and settings', async () => {
     await s.savePosition('a', { chapter: 2, wordIndex: 5, wpm: 260, audioOn: true })
     expect(await s.loadPosition('a')).toEqual({ chapter: 2, wordIndex: 5, wpm: 260, audioOn: true })
-    await s.saveSettings({ ...DEFAULT_STEADY_SETTINGS, engine: 'elevenlabs' })
-    expect((await s.loadSettings())?.engine).toBe('elevenlabs')
+    await s.saveSettings({ ...DEFAULT_STEADY_SETTINGS, elevenVoice: 'voice-9' })
+    expect((await s.loadSettings())?.elevenVoice).toBe('voice-9')
   })
 })
 

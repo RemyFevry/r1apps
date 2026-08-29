@@ -1,6 +1,5 @@
 import './style.css'
 import { FONT, SCREEN, THEME } from 'r1-kit'
-import { createBridgeVoice } from './tts/bridge'
 import { createElevenVoice, defaultElevenDeps, type ElevenVoice } from './tts/eleven'
 import { createDocStorage, DEFAULT_STEADY_SETTINGS, type DocRecord, type DocStorage, type SteadySettings } from './store'
 import { ShelfDocStorage } from './ingestion/shelf'
@@ -8,6 +7,7 @@ import { addDocScreen } from './screens/adddoc'
 import { libraryScreen } from './screens/library'
 import { readerScreen } from './screens/reader'
 import { settingsScreen } from './screens/settings'
+import { probeScreen } from './screens/probe'
 
 export type { DocRecord } from './store'
 
@@ -16,10 +16,10 @@ export interface Nav {
   openDoc(doc: DocRecord): void
   addDoc(): void
   settings(): void
+  probe(): void
 }
 
 export interface TtsCtx {
-  rabbit: ReturnType<typeof createBridgeVoice>
   eleven: ElevenVoice | null
 }
 
@@ -36,7 +36,6 @@ const storage: DocStorage = new ShelfDocStorage(__BUNDLED_DOCS__, __BUNDLED_DOCS
 const settings: SteadySettings = { ...DEFAULT_STEADY_SETTINGS }
 
 const tts: TtsCtx = {
-  rabbit: createBridgeVoice(),
   eleven: null,
 }
 
@@ -70,6 +69,7 @@ const nav: Nav = {
   openDoc: (doc) => show((ctx) => readerScreen(ctx, doc)),
   addDoc: () => show((ctx) => addDocScreen(ctx)),
   settings: () => show((ctx) => settingsScreen(ctx)),
+  probe: () => show((ctx) => probeScreen(ctx)),
 }
 
 async function boot(): Promise<void> {
