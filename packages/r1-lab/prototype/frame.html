@@ -1,0 +1,523 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Answers ticket #56 "Prototype the R1 lab device frame and control surface".
+  Three variants of the R1 lab UI (device frame + control deck + app picker + storage panel),
+  switchable via ?variant=A|B|C (or the floating switcher / ← → keys). Nothing is real; the
+  screen shows a placeholder app and the storage panel is a stub.
+
+  Run: python3 -m http.server 8123 --directory packages/r1-lab/prototype
+  Open: http://localhost:8123/frame.html?variant=A
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>R1 Lab — frame prototype</title>
+<style>
+  :root {
+    --bg: #0e0e10; --panel: #16161a; --panel2: #1d1d22; --line: #2a2a31;
+    --text: #e8e8ea; --dim: #9a9aa0; --faint: #5f5f66;
+    --accent: #fe5000; --accent-dim: #b53a08; --ok: #3fb950; --warn: #d29922;
+    --screen-bg: #0a0a0c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  h1 { font-size: 15px; margin: 0; }
+  .muted { color: var(--dim); }
+  .tiny { font-size: 11px; color: var(--faint); }
+
+  header.appbar {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 10px 16px; border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  header.appbar .tag { color: var(--accent); font-weight: 600; }
+
+  /* ============ the device frame (shared) ============ */
+  .device { position: relative; }
+  .screen {
+    width: 360px; height: 423px;                /* 240×282 at 1.5× */
+    background: var(--screen-bg);
+    border-radius: 22px; border: 1px solid #000;
+    overflow: hidden; position: relative;
+    box-shadow: 0 18px 40px rgba(0,0,0,.55), inset 0 0 0 6px #050506;
+  }
+  .screen .app {
+    height: 100%; padding: 10px 8px; font-size: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .screen .app .bar { font-weight: 700; font-size: 12px; padding: 2px 0 6px; border-bottom: 1px solid #222; }
+  .screen .app .row {
+    background: #141417; border: 1px solid #232328; border-radius: 5px;
+    padding: 6px 7px; display: flex; justify-content: space-between; gap: 6px;
+  }
+  .screen .app .row b { font-size: 11px; font-weight: 600; }
+  .screen .app .row span { color: var(--dim); font-size: 10px; }
+  .screen .app .row .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-top: 3px; flex: none; }
+  .screen .size-tag {
+    position: absolute; bottom: 6px; right: 10px; font-size: 10px; color: #3d3d44;
+    font-variant-numeric: tabular-nums;
+  }
+  .sidebtn {
+    position: absolute; right: -12px; top: 50%; transform: translateY(-50%);
+    width: 14px; height: 108px; border-radius: 7px;
+    background: linear-gradient(180deg, #3a3a40, #232327 60%, #17171a);
+    border: 1px solid #000; cursor: pointer; user-select: none;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .06s;
+  }
+  .sidebtn .tick { color: #55555c; font-size: 8px; letter-spacing: 2px; writing-mode: vertical-rl; }
+  .sidebtn.pressed { transform: translateY(-50%) translateX(2px); background: linear-gradient(180deg, #2c2c31, #1a1a1e); }
+  .sidebtn .ring { display: none; }
+  .sidebtn.holding .ring { display: block; position: absolute; inset: -4px; border-radius: 9px; border: 2px solid var(--accent); border-right-color: transparent; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============ controls (shared) ============ */
+  button.press {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 10px; font-size: 12px; cursor: pointer;
+  }
+  button.press:active { background: #26262d; }
+  .wheel { display: inline-flex; flex-direction: column; gap: 4px; }
+  .wheel button { width: 44px; height: 30px; font-size: 15px; }
+  .kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--panel2); color: var(--dim); font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+  .evlog { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--dim); background: #121215; border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-height: 118px; overflow: hidden; }
+  .evlog .ev { white-space: nowrap; }
+  .evlog .ev b { color: var(--accent); font-weight: 600; }
+
+  /* ============ variants: containers ============ */
+  .variant { display: none; min-height: calc(100vh - 105px); padding: 20px 16px; }
+  .variant.active { display: block; }
+  .col { display: flex; flex-direction: column; gap: 10px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .panel h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin: 0 0 8px; }
+
+  /* ---- Variant A: "Beside the bench" (side control deck + right storage) ---- */
+  #variantA .appbar-inner { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #variantA .pills { display: flex; gap: 6px; }
+  #variantA .pill { border: 1px solid var(--line); background: var(--panel2); color: var(--dim); border-radius: 999px; padding: 3px 11px; font-size: 12px; }
+  #variantA .pill.on { color: #0e0e10; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  #variantA .a-main { display: grid; grid-template-columns: 360px 1fr 240px; gap: 18px; align-items: start; max-width: 1080px; }
+  #variantA .deck .bigside {
+    width: 100%; height: 74px; border-radius: 12px; font-size: 13px; font-weight: 600;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  }
+  #variantA .deck .bigside .hint { font-size: 10px; color: var(--faint); font-weight: 400; }
+  #variantA .holdbar { height: 4px; border-radius: 2px; background: #222; margin-top: 8px; overflow: hidden; }
+  #variantA .holdbar i { display: block; height: 100%; width: 0; background: var(--accent); }
+  #variantA .legend li { margin: 4px 0; list-style: none; }
+
+  /* ---- Variant B: "Rails below" (device-first, slim rail, left sidebar) ---- */
+  #variantB .b-main { display: grid; grid-template-columns: 200px 1fr; gap: 18px; align-items: start; max-width: 1000px; }
+  #variantB .b-center { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  #variantB .rail {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 8px 18px;
+  }
+  #variantB .rail .sidebtn2 {
+    width: 46px; height: 46px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--line);
+    color: var(--dim); font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  #variantB .rail .sidebtn2.pressed { background: #26262d; }
+  #variantB .rail .sidebtn2.holding { border-color: var(--accent); }
+  #variantB .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  #variantB .ticker { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--dim); }
+  #variantB .sublist { display: flex; flex-direction: column; gap: 4px; }
+  #variantB .sublist .item { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 6px; border-radius: 5px; }
+  #variantB .sublist .item.on { background: #26262d; color: var(--accent); }
+  #variantB .sidelist { display: flex; flex-direction: column; gap: 4px; }
+  #variantB .sidelist .item { font-size: 12px; padding: 4px 6px; border-radius: 5px; display: flex; justify-content: space-between; }
+  #variantB .overlayhint {
+    position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%);
+    background: rgba(14,14,16,.92); border: 1px solid var(--line); border-radius: 999px;
+    padding: 3px 12px; font-size: 11px; color: var(--dim); white-space: nowrap; transition: opacity .6s;
+  }
+  #variantB .overlayhint.hidden { opacity: 0; }
+
+  /* ---- Variant C: "Workbench dock" (toolbar + bottom dock + drawer) ---- */
+  #variantC .c-main { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  #variantC .toolbar { display: flex; gap: 8px; align-items: center; }
+  #variantC select.press { font-size: 12px; padding: 5px 8px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; }
+  #variantC .dock {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 18px; align-items: center;
+    width: 100%; max-width: 860px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 22px;
+  }
+  #variantC .dock .bigside {
+    width: 84px; height: 84px; border-radius: 50%; font-size: 12px; font-weight: 600;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  }
+  #variantC .dock .bigside .hint { font-size: 9px; color: var(--faint); font-weight: 400; }
+  #variantC .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 280px;
+    background: var(--panel); border-left: 1px solid var(--line);
+    transform: translateX(100%); transition: transform .18s; padding: 16px; overflow-y: auto; z-index: 5;
+  }
+  #variantC .drawer.open { transform: translateX(0); }
+  #variantC .drawer h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); margin: 0 0 10px; }
+  #variantC .dimmer { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; z-index: 4; }
+  #variantC .dimmer.on { display: block; }
+
+  /* storage key row (shared) */
+  .keys { display: flex; flex-direction: column; gap: 5px; }
+  .keyrow { display: flex; justify-content: space-between; gap: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; background: #121215; border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; }
+  .keyrow .k { color: var(--dim); word-break: break-all; }
+  .keyrow .v { color: var(--faint); flex: none; }
+  .actions { display: flex; gap: 6px; margin-top: 10px; }
+
+  /* floating variant switcher (shared) */
+  .switcher {
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    background: #22222a; border: 1px solid #3a3a44; border-radius: 999px;
+    padding: 5px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 50;
+  }
+  .switcher .lbl { font-size: 12px; color: var(--text); min-width: 150px; text-align: center; }
+  .switcher .lbl b { color: var(--accent); }
+  .switcher button { background: none; border: none; color: var(--dim); font-size: 16px; cursor: pointer; padding: 2px 6px; }
+  .switcher button:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <h1><span class="tag">R1 LAB</span> — device frame prototype</h1>
+  <span class="muted tiny">PROTOTYPE · answers #56 · use ← → or the switcher to change variant</span>
+</header>
+
+<!-- ================= Variant A — Beside the bench ================= -->
+<section id="variantA" class="variant active">
+  <div class="appbar-inner">
+    <span class="muted tiny">App:</span>
+    <div class="pills">
+      <span class="pill on">QuickReader</span>
+      <span class="pill">SteadyReader</span>
+    </div>
+  </div>
+  <div class="a-main" style="margin-top:14px">
+    <div class="device">
+      <div class="sidebtn" id="a-side" title="Side button: click = sideClick, hold = longPress">
+        <span class="tick">SIDE</span><span class="ring"></span>
+      </div>
+      <div class="screen">
+        <div class="app">
+          <div class="bar">QuickReader</div>
+          <div class="row"><b>Ethical Slut</b><span>1,024 w</span><i class="dot"></i></div>
+          <div class="row"><b>Dune</b><span>412k w</span></div>
+          <div class="row"><b>Moby Dick</b><span>212k w</span><i class="dot"></i></div>
+          <div class="row"><b>A Fire Upon…</b><span>311k w</span></div>
+        </div>
+        <div class="size-tag">240 × 282</div>
+      </div>
+    </div>
+
+    <div class="col" style="max-width:380px">
+      <div class="panel deck">
+        <h2>Controls</h2>
+        <button class="press bigside" id="a-bigside">SIDE BUTTON<span class="hint">click = sideClick · hold = longPress</span></button>
+        <div class="holdbar" id="a-holdbar"><i></i></div>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:12px">
+          <div class="wheel">
+            <button class="press" data-up="a">▲</button>
+            <button class="press" data-down="a">▼</button>
+          </div>
+          <div class="tiny">Scroll wheel<br>up / down</div>
+        </div>
+        <ul class="legend" style="margin:12px 0 0;padding:0">
+          <li><span class="kbd">Esc</span> sideClick</li>
+          <li><span class="kbd">↑</span> / <span class="kbd">↓</span> scroll up / down</li>
+          <li><span class="kbd">Space</span> longPress (start on press, end on release)</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h2>Device events</h2>
+        <div class="evlog" id="a-log"><div class="tiny">— no events yet —</div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="panel">
+        <h2>Device storage · creationStorage</h2>
+        <div class="keys" id="a-keys"></div>
+        <div class="actions">
+          <button class="press" data-seed="a">Seed</button>
+          <button class="press" data-clear="a">Clear app data</button>
+        </div>
+        <div class="tiny" style="margin-top:8px">persists across reloads (localStorage-backed)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Variant B — Rails below ================= -->
+<section id="variantB" class="variant">
+  <div class="b-main">
+    <div class="col">
+      <div class="panel">
+        <h2>Apps</h2>
+        <div class="sublist">
+          <div class="item on">QuickReader</div>
+          <div class="item">SteadyReader</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Device storage</h2>
+        <div class="keys" id="b-keys"></div>
+        <div class="actions">
+          <button class="press" data-seed="b">Seed</button>
+          <button class="press" data-clear="b">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="b-center">
+      <div class="device" style="margin-top:8px">
+        <div class="sidebtn" id="b-side" title="Side button">
+          <span class="tick">SIDE</span><span class="ring"></span>
+        </div>
+        <div class="screen">
+          <div class="app">
+            <div class="bar">QuickReader</div>
+            <div class="row"><b>Ethical Slut</b><span>1,024 w</span><i class="dot"></i></div>
+            <div class="row"><b>Dune</b><span>412k w</span></div>
+            <div class="row"><b>Moby Dick</b><span>212k w</span><i class="dot"></i></div>
+            <div class="row"><b>A Fire Upon…</b><span>311k w</span></div>
+          </div>
+          <div class="size-tag">240 × 282</div>
+        </div>
+        <div class="overlayhint" id="b-hint"><span class="kbd">Esc</span> side · <span class="kbd">↑↓</span> scroll · <span class="kbd">Space</span> hold</div>
+      </div>
+      <div class="rail">
+        <div class="wheel">
+          <button class="press" data-up="b">▲</button>
+          <button class="press" data-down="b">▼</button>
+        </div>
+        <button class="sidebtn2" id="b-side2">SIDE</button>
+        <div class="ticker" id="b-ticker">—</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Variant C — Workbench dock ================= -->
+<section id="variantC" class="variant">
+  <div class="c-main">
+    <div class="toolbar">
+      <label class="tiny muted">App</label>
+      <select class="press" id="c-app">
+        <option>QuickReader</option>
+        <option>SteadyReader</option>
+      </select>
+      <button class="press" id="c-storage-btn">Storage</button>
+    </div>
+
+    <div class="device" style="margin-top:6px">
+      <div class="sidebtn" id="c-side" title="Side button">
+        <span class="tick">SIDE</span><span class="ring"></span>
+      </div>
+      <div class="screen">
+        <div class="app">
+          <div class="bar">QuickReader</div>
+          <div class="row"><b>Ethical Slut</b><span>1,024 w</span><i class="dot"></i></div>
+          <div class="row"><b>Dune</b><span>412k w</span></div>
+          <div class="row"><b>Moby Dick</b><span>212k w</span><i class="dot"></i></div>
+          <div class="row"><b>A Fire Upon…</b><span>311k w</span></div>
+        </div>
+        <div class="size-tag">240 × 282</div>
+      </div>
+    </div>
+
+    <div class="dock">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="wheel">
+          <button class="press" data-up="c">▲</button>
+          <button class="press" data-down="c">▼</button>
+        </div>
+        <div class="tiny">scroll wheel</div>
+      </div>
+      <button class="press bigside" id="c-bigside">SIDE<span class="hint">click / hold</span></button>
+      <div class="evlog" id="c-log" style="min-height:56px"></div>
+    </div>
+  </div>
+
+  <div class="dimmer" id="c-dimmer"></div>
+  <div class="drawer" id="c-drawer">
+    <h2>Device storage · creationStorage</h2>
+    <div class="keys" id="c-keys"></div>
+    <div class="actions">
+      <button class="press" data-seed="c">Seed</button>
+      <button class="press" data-clear="c">Clear app data</button>
+    </div>
+    <div class="tiny" style="margin-top:8px">persists across reloads (localStorage-backed)</div>
+  </div>
+</section>
+
+<!-- floating variant switcher -->
+<div class="switcher">
+  <button id="prev" title="previous variant">◀</button>
+  <div class="lbl"><b id="cur-key">A</b> <span id="cur-name">Beside the bench</span></div>
+  <button id="next" title="next variant">▶</button>
+</div>
+
+<script>
+'use strict';
+/* ---------- shared event plumbing ---------- */
+const VARIANT_NAMES = {
+  A: 'Beside the bench',   // side control deck, storage as right column
+  B: 'Rails below',        // device-first, slim rail under the screen, left sidebar
+  C: 'Workbench dock',     // toolbar + bottom dock, storage as slide-out drawer
+};
+let variant = new URLSearchParams(location.search).get('variant');
+variant = (variant && VARIANT_NAMES[variant]) ? variant : 'A';
+const ORDER = ['A', 'B', 'C'];
+
+function show(v) {
+  variant = v;
+  document.querySelectorAll('.variant').forEach(el => el.classList.remove('active'));
+  document.getElementById('variant' + v).classList.add('active');
+  document.getElementById('cur-key').textContent = v;
+  document.getElementById('cur-name').textContent = VARIANT_NAMES[v];
+  const u = new URL(location.href);
+  u.searchParams.set('variant', v);
+  history.replaceState(null, '', u);
+}
+
+document.getElementById('prev').onclick = () => show(ORDER[(ORDER.indexOf(variant) + 2) % 3]);
+document.getElementById('next').onclick = () => show(ORDER[(ORDER.indexOf(variant) + 1) % 3]);
+
+/* hardware events: log per-variant, ticker for B */
+function log(which, ev) {
+  const box = document.getElementById(which + '-log');
+  if (box) {
+    const line = document.createElement('div');
+    line.className = 'ev';
+    line.innerHTML = `<span class="tiny">${new Date().toLocaleTimeString()}</span> <b>${ev}</b>`;
+    box.prepend(line);
+    while (box.children.length > 8) box.lastChild.remove();
+    const first = box.querySelector('.tiny');
+    if (first && first.textContent === '— no events yet —') first.remove();
+  }
+  const t = document.getElementById(which + '-ticker');
+  if (t) t.textContent = '↳ ' + ev;
+}
+const dispatch = (which) => ({
+  sideClick: () => log(which, 'sideClick'),
+  longPressStart: () => log(which, 'longPressStart'),
+  longPressEnd: () => log(which, 'longPressEnd'),
+  scrollUp: () => log(which, 'scrollUp'),
+  scrollDown: () => log(which, 'scrollDown'),
+});
+
+/* ---------- side button with hold (shared behavior, any element) ---------- */
+function wireSideButton(els, which) {
+  const ev = dispatch(which);
+  els.forEach(el => {
+    let timer = null, held = false;
+    const start = (e) => {
+      e.preventDefault();
+      held = false;
+      el.classList.add('pressed');
+      timer = setTimeout(() => { held = true; el.classList.add('holding'); ev.longPressStart(); }, 500);
+    };
+    const end = () => {
+      el.classList.remove('pressed');
+      clearTimeout(timer);
+      if (held) { el.classList.remove('holding'); ev.longPressEnd(); }
+      else ev.sideClick();
+    };
+    el.addEventListener('pointerdown', start);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointerleave', end);
+  });
+}
+wireSideButton([document.getElementById('a-side'), document.getElementById('a-bigside')], 'a');
+wireSideButton([document.getElementById('b-side'), document.getElementById('b-side2')], 'b');
+wireSideButton([document.getElementById('c-side'), document.getElementById('c-bigside')], 'c');
+
+/* hold progress bar (variant A) */
+(function () {
+  const bar = document.getElementById('a-holdbar').querySelector('i');
+  const el = document.getElementById('a-bigside');
+  let raf = null;
+  el.addEventListener('pointerdown', () => {
+    bar.style.transition = 'none'; bar.style.width = '0%';
+    requestAnimationFrame(() => { bar.style.transition = 'width .5s linear'; bar.style.width = '100%'; });
+  });
+  const reset = () => { bar.style.width = '0%'; };
+  el.addEventListener('pointerup', reset); el.addEventListener('pointerleave', reset);
+})();
+
+/* scroll wheel buttons */
+document.querySelectorAll('[data-up]').forEach(b => b.addEventListener('click', () => dispatch(b.dataset.up).scrollUp()));
+document.querySelectorAll('[data-down]').forEach(b => b.addEventListener('click', () => dispatch(b.dataset.down).scrollDown()));
+
+/* keyboard: Esc side, ↑↓ scroll, Space long-press. ←→ cycles variants (not in inputs). */
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (e.key === 'Escape') { dispatch(variant.toLowerCase()).sideClick(); return; }
+  if (e.key === 'ArrowUp') { dispatch(variant.toLowerCase()).scrollUp(); return; }
+  if (e.key === 'ArrowDown') { dispatch(variant.toLowerCase()).scrollDown(); return; }
+  if (e.key === ' ') { e.preventDefault(); dispatch(variant.toLowerCase()).longPressStart(); return; }
+  if (e.key === 'ArrowLeft') { show(ORDER[(ORDER.indexOf(variant) + 2) % 3]); }
+  if (e.key === 'ArrowRight') { show(ORDER[(ORDER.indexOf(variant) + 1) % 3]); }
+});
+document.addEventListener('keyup', (e) => {
+  if (e.key === ' ') dispatch(variant.toLowerCase()).longPressEnd();
+});
+
+/* ---------- storage stub ---------- */
+const SEED_KEYS = {
+  a: [['quickreader.book:qr-7f3a', '1.2 KB'], ['quickreader.pos:qr-7f3a', '{"ch":3,"w":512}'], ['quickreader.settings', '{"wpm":300}']],
+  b: [['quickreader.pos:qr-7f3a', '{"ch":3,"w":512}'], ['quickreader.settings', '{"wpm":300}']],
+  c: [['quickreader.book:qr-7f3a', '1.2 KB'], ['quickreader.pos:qr-7f3a', '{"ch":3,"w":512}'], ['quickreader.settings', '{"wpm":300}'], ['quickreader.book:qr-9c01', '3.4 MB']],
+};
+function renderKeys(which) {
+  const box = document.getElementById(which + '-keys');
+  box.innerHTML = '';
+  const items = JSON.parse(sessionStorage.getItem('lab-keys-' + which) || '[]');
+  if (!items.length) { box.innerHTML = '<div class="tiny">— empty —</div>'; return; }
+  items.forEach(([k, v]) => {
+    const row = document.createElement('div');
+    row.className = 'keyrow';
+    row.innerHTML = `<span class="k">${k}</span><span class="v">${v}</span>`;
+    box.appendChild(row);
+  });
+}
+document.querySelectorAll('[data-seed]').forEach(b => b.addEventListener('click', () => {
+  sessionStorage.setItem('lab-keys-' + b.dataset.seed, JSON.stringify(SEED_KEYS[b.dataset.seed] || []));
+  renderKeys(b.dataset.seed);
+}));
+document.querySelectorAll('[data-clear]').forEach(b => b.addEventListener('click', () => {
+  sessionStorage.removeItem('lab-keys-' + b.dataset.clear);
+  renderKeys(b.dataset.clear);
+}));
+['a', 'b', 'c'].forEach(renderKeys);
+
+/* variant C drawer */
+const drawer = document.getElementById('c-drawer'), dimmer = document.getElementById('c-dimmer');
+function toggleDrawer(open) { drawer.classList.toggle('open', open); dimmer.classList.toggle('on', open); }
+document.getElementById('c-storage-btn').onclick = () => toggleDrawer(!drawer.classList.contains('open'));
+dimmer.onclick = () => toggleDrawer(false);
+
+/* overlay hint auto-hides (variant B) after activity */
+(function () {
+  const hint = document.getElementById('b-hint');
+  let t;
+  const flash = () => { hint.classList.remove('hidden'); clearTimeout(t); t = setTimeout(() => hint.classList.add('hidden'), 4000); };
+  ['b-log', 'b-ticker'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) new MutationObserver(flash).observe(el, { childList: true, subtree: true });
+  });
+  flash();
+})();
+
+show(variant);
+</script>
+</body>
+</html>
