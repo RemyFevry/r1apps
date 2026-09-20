@@ -13,11 +13,11 @@
     "r1-kit": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.6.1",
     "fflate": "^0.8.0",
-    "happy-dom": "^20.11.2",
+    "happy-dom": "^20.14.5",
     "typescript": "^7.0.2",
-    "vite": "^8.2.1",
-    "vitest": "^4.1.10"
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
   }
 }
