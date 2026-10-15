@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=240, initial-scale=1.0, user-scalable=no">
+  <title>R1voice Probe</title>
+  <style>
+    :root { --bg:#0e0e10; --accent:#FE5000; --dim:rgba(255,255,255,0.55); --mono:'Roboto Mono', 'Droid Sans Mono', Menlo, Consolas, monospace; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 240px; height: 282px; overflow: hidden; }
+    body { background: var(--bg); color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .wrap { width: 240px; height: 282px; display: flex; flex-direction: column; padding: 6px 8px; gap: 2px; }
+    header { display: flex; justify-content: space-between; align-items: baseline; }
+    .brand { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+    #bridge { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+    #clockbox { border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; background: rgba(255,255,255,0.06); text-align: center; padding: 5px 0 3px; }
+    #clock { font-family: var(--mono); font-size: 44px; font-weight: 700; line-height: 1; }
+    #clock.idle { color: var(--dim); }
+    #clock.beat { color: var(--accent); }
+    .clocklabel { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); }
+    #sentline { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #sentline.stop { color: var(--accent); }
+    #senttext { font-size: 10px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #sel { display: flex; gap: 3px; font-family: var(--mono); font-size: 10px; line-height: 14px; }
+    #sel span { padding: 0 3px; border-radius: 3px; color: var(--dim); }
+    #sel span.on { background: var(--accent); color: #0e0e10; font-weight: 700; }
+    .sect { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); border-top: 1px solid rgba(255,255,255,0.12); padding-top: 2px; }
+    #tally, #log { font-family: var(--mono); font-size: 10px; line-height: 11px; white-space: pre; overflow: hidden; height: 44px; }
+    #hint { font-size: 9px; color: var(--dim); text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header><span class="brand">r1voice probe</span><span id="bridge">bridge:?</span></header>
+    <div id="clockbox"><div id="clock" class="idle">0.000</div><div class="clocklabel">seconds since post</div></div>
+    <div id="sentline"></div>
+    <div id="senttext"></div>
+    <div id="sel"></div>
+    <div class="sect">tally</div>
+    <div id="tally"></div>
+    <div class="sect">events</div>
+    <div id="log"></div>
+    <div id="hint">scroll select · side = GO · hold = exit</div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
